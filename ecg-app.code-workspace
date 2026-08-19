@@ -1,0 +1,28 @@
+{
+  "folders": [{ "path": "." }],
+  "settings": {
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "files.exclude": { "**/__pycache__": true, "**/node_modules": true },
+    "python.defaultInterpreterPath": "./backend/venv/bin/python"
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [{
+      "name": "FastAPI Backend",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/main.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/backend"
+    }]
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-python.python",
+      "ms-python.vscode-pylance",
+      "dbaeumer.vscode-eslint",
+      "esbenp.prettier-vscode"
+    ]
+  }
+}
