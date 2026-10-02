@@ -304,12 +304,61 @@ async def predict_image(file: UploadFile = File(...)):
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
         if img is None:
-            raise ValueError("Could not decode image")
-        strip = cv2.resize(img, (187, 100))
-        signal = np.array([np.mean(col) for col in strip.T], dtype=float)
+            raise ValueError("Could not decode image. Please upload a valid JPG or PNG file.")
+
+        h, w = img.shape
+
+        # ── ECG validation ──────────────────────────────────────────────
+        # 1. Reject near-uniform images (solid color, blank page, logo, etc.)
+        std = float(np.std(img))
+        if std < 8.0:
+            raise ValueError("Image appears to be blank or uniform. Please upload a photo of an ECG strip.")
+
+        # 2. Reject images with very low contrast (not a waveform)
+        p5, p95 = np.percentile(img, 5), np.percentile(img, 95)
+        if (p95 - p5) < 30:
+            raise ValueError("Image has insufficient contrast. Please upload a clear ECG strip photo.")
+
+        # 3. Extract waveform: find the darkest (ink) pixel row per column
+        #    Works for both dark-on-white and light-on-dark ECG strips
+        resized = cv2.resize(img, (187, 128))
+
+        # Invert if background is dark (mean > 128 means light bg = normal)
+        if np.mean(resized) < 128:
+            resized = 255 - resized
+
+        # Threshold to isolate the waveform trace
+        _, binary = cv2.threshold(resized, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+        # For each column, find the centroid row of dark pixels (the trace)
+        signal = np.zeros(187, dtype=float)
+        for col in range(187):
+            col_data = binary[:, col]
+            rows = np.where(col_data > 0)[0]
+            if len(rows) > 0:
+                signal[col] = float(np.mean(rows))
+            else:
+                signal[col] = 64.0  # default to midpoint if no trace found
+
+        # 4. Validate the extracted signal looks like a waveform
+        #    A real ECG has meaningful variation — reject flat/noisy extractions
+        sig_std = float(np.std(signal))
+        sig_range = float(signal.max() - signal.min())
+        if sig_std < 2.0 or sig_range < 5.0:
+            raise ValueError("Could not detect an ECG waveform in this image. Please upload a clear photo of an ECG strip with a visible trace.")
+
+        # Invert so peaks go up (row 0 = top, so lower row = higher on screen)
+        signal = signal.max() - signal
+
+        # Normalize to 0-1
         signal = (signal - signal.min()) / (signal.max() - signal.min() + 1e-8)
+
         results, ensemble_probs = run_predict(signal)
         return {'success': True, 'signal': signal.tolist(), 'predictions': results, 'ensemble_probs': ensemble_probs}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
