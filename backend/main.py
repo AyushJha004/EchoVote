@@ -309,52 +309,83 @@ async def predict_image(file: UploadFile = File(...)):
         h, w = img.shape
 
         # ── ECG validation ──────────────────────────────────────────────
-        # 1. Reject near-uniform images (solid color, blank page, logo, etc.)
+        # 1. Reject near-uniform images
         std = float(np.std(img))
         if std < 8.0:
             raise ValueError("Image appears to be blank or uniform. Please upload a photo of an ECG strip.")
 
-        # 2. Reject images with very low contrast (not a waveform)
+        # 2. Reject very low contrast images
         p5, p95 = np.percentile(img, 5), np.percentile(img, 95)
         if (p95 - p5) < 30:
             raise ValueError("Image has insufficient contrast. Please upload a clear ECG strip photo.")
 
-        # 3. Extract waveform: find the darkest (ink) pixel row per column
-        #    Works for both dark-on-white and light-on-dark ECG strips
-        resized = cv2.resize(img, (187, 128))
+        # 3. Crop to the central 80% vertically to skip axis labels/borders
+        top = int(h * 0.10)
+        bot = int(h * 0.90)
+        img_crop = img[top:bot, :]
 
-        # Invert if background is dark (mean > 128 means light bg = normal)
+        # 4. Resize to working resolution
+        resized = cv2.resize(img_crop, (187, 256))
+
+        # 5. Normalise brightness — CLAHE for low-contrast photos
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        resized = clahe.apply(resized)
+
+        # 6. Ensure dark trace on light background
         if np.mean(resized) < 128:
             resized = 255 - resized
 
-        # Threshold to isolate the waveform trace
-        _, binary = cv2.threshold(resized, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        # 7. Adaptive threshold — handles uneven lighting better than Otsu
+        binary = cv2.adaptiveThreshold(
+            resized, 255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY_INV,
+            blockSize=15, C=6
+        )
 
-        # For each column, find the centroid row of dark pixels (the trace)
+        # 8. Remove thin noise with morphological opening
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 2))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
+        # 9. Per-column: weighted centroid of dark pixels (preserves peak shape)
         signal = np.zeros(187, dtype=float)
         for col in range(187):
-            col_data = binary[:, col]
-            rows = np.where(col_data > 0)[0]
-            if len(rows) > 0:
-                signal[col] = float(np.mean(rows))
+            col_data = binary[:, col].astype(float)
+            total = col_data.sum()
+            if total > 0:
+                rows = np.arange(256, dtype=float)
+                signal[col] = float(np.sum(rows * col_data) / total)
             else:
-                signal[col] = 64.0  # default to midpoint if no trace found
+                signal[col] = 128.0
 
-        # 4. Validate the extracted signal looks like a waveform
-        #    A real ECG has meaningful variation — reject flat/noisy extractions
+        # 10. Smooth out single-column spikes
+        signal = np.convolve(signal, np.ones(3) / 3, mode='same')
+
+        # 11. Validate extracted signal
         sig_std = float(np.std(signal))
         sig_range = float(signal.max() - signal.min())
         if sig_std < 2.0 or sig_range < 5.0:
             raise ValueError("Could not detect an ECG waveform in this image. Please upload a clear photo of an ECG strip with a visible trace.")
 
-        # Invert so peaks go up (row 0 = top, so lower row = higher on screen)
+        # 12. Invert so peaks go up, then normalize to 0-1
         signal = signal.max() - signal
-
-        # Normalize to 0-1
         signal = (signal - signal.min()) / (signal.max() - signal.min() + 1e-8)
 
         results, ensemble_probs = run_predict(signal)
-        return {'success': True, 'signal': signal.tolist(), 'predictions': results, 'ensemble_probs': ensemble_probs}
+
+        # Return original image as base64 so frontend can display it exactly
+        import base64
+        img_b64 = base64.b64encode(contents).decode('utf-8')
+        ext = (file.filename or 'img.jpg').rsplit('.', 1)[-1].lower()
+        mime = 'image/png' if ext == 'png' else 'image/jpeg'
+
+        return {
+            'success': True,
+            'signal': signal.tolist(),
+            'predictions': results,
+            'ensemble_probs': ensemble_probs,
+            'source_image': f'data:{mime};base64,{img_b64}'
+        }
     except HTTPException:
         raise
     except ValueError as e:

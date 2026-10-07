@@ -1,4 +1,4 @@
-# CardiScan — ECG Arrhythmia Classification
+# EchoVote — ECG Arrhythmia Classification
 
 > AI-powered cardiac diagnosis using an 8-model ensemble (3 Deep Learning + 5 Machine Learning).  
 > Built for doctors and researchers. Capstone research — BMSCE Bengaluru.
@@ -48,7 +48,7 @@ docker-compose up -d
 Visit: **http://localhost:3000**
 
 > The backend takes ~2–3 minutes on first start to load all 8 models (TensorFlow initialization).  
-> If the UI shows "Offline", wait a moment and refresh.
+> The sidebar shows **"Live"** once all models are ready. If it shows "Offline", wait a moment and refresh.
 
 ---
 
@@ -71,6 +71,8 @@ docker logs ecg-app-backend-1
 ---
 
 ## 🛠 Development (Without Docker)
+
+> **Note:** Requires Python 3.10 or 3.11. Python 3.12+ is not supported by TensorFlow.
 
 ### Backend
 ```bash
@@ -107,7 +109,7 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 1. Go to [Kaggle — ECG Heartbeat Categorization](https://www.kaggle.com/datasets/shayanfazeli/heartbeat)
 2. Download `mitbih_test.csv`
 3. Open in Excel, copy any row's first **187 values** (ignore column 188 — that's the label)
-4. Paste into the **Manual** tab in CardiScan and hit Analyze
+4. Paste into the **Manual** tab in EchoVote and hit Analyze
 
 **Class labels in the dataset:**
 | Value | Class |
@@ -126,14 +128,14 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 | Tab | Description |
 |-----|-------------|
 | 📄 CSV | Upload a CSV file with 187 comma-separated ECG amplitude values |
-| 📷 Photo | Upload a photo of a printed ECG strip — OpenCV extracts the signal |
-| ⌨️ Manual | Paste 187 values directly |
+| 📷 Photo | Upload a photo of a printed ECG strip — OpenCV extracts the signal. The original image is displayed exactly as uploaded. |
+| ⌨️ Manual | Paste 187 values directly (comma, tab, or space separated; scientific notation supported) |
 | 🧪 Sample | Generate synthetic beats: Normal, Ventricular, Supraventricular, Fusion |
 
 ### Results Panel
 | Tab | Description |
 |-----|-------------|
-| Overview | Ensemble verdict + Sensitivity Heatmap + DL vs ML comparison |
+| Overview | Uploaded image preview (photo mode) + Ensemble verdict + Sensitivity Heatmap + DL vs ML comparison |
 | Disease Probability | Per-class probability bars + per-model probability table |
 | All Models | Individual cards for all 8 models with confidence and probability breakdown |
 
@@ -144,7 +146,11 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 - Clinical recommendation based on prediction + consensus
 
 ### Sensitivity Heatmap
-Perturbation-based explainability — slides a 10-sample window across the 187-point signal, masks each window, re-runs all models, and shows which ECG segments most influenced the prediction.
+Perturbation-based explainability — slides a 10-sample window across the 187-point signal, masks each window, re-runs all 8 models, and shows which ECG segments most influenced the prediction.
+
+- **Photo uploads:** heatmap is overlaid directly on the original uploaded image
+- **CSV / Manual:** heatmap is overlaid on the SVG signal chart
+- Color scale: blue (low impact) → amber → red (high impact)
 
 ---
 
@@ -171,21 +177,33 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 | Layer | Technology |
 |-------|-----------|
 | Frontend | React 18, SVG charts |
-| Backend | FastAPI, Python 3.10+ |
-| ML/DL | Scikit-learn, XGBoost, TensorFlow/Keras |
-| Image processing | OpenCV |
+| Backend | FastAPI, Python 3.10 |
+| ML/DL | Scikit-learn, XGBoost, TensorFlow 2.16 (CPU) |
+| Image processing | OpenCV (CLAHE + adaptive threshold + weighted centroid) |
 | Containerization | Docker, Docker Compose, Nginx |
 
 ## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/health` | Backend status + models loaded |
-| POST | `/api/predict/csv` | Upload CSV file |
-| POST | `/api/predict/image` | Upload ECG photo |
+| GET | `/api/health` | Backend status + models loaded + demo mode flag |
+| POST | `/api/predict/csv` | Upload CSV file (187 values) |
+| POST | `/api/predict/image` | Upload ECG photo — returns signal + original image as base64 |
 | POST | `/api/predict/manual` | JSON `{values: [...187 floats]}` |
 | POST | `/api/perturbation` | Sensitivity heatmap computation |
-| GET | `/api/clinical-info` | Clinical info for each class |
+| GET | `/api/clinical-info` | Clinical info for each arrhythmia class |
+
+---
+
+## 📝 Changelog
+
+### Latest
+- Renamed app from CardiaScan → **EchoVote**
+- **Photo upload:** original image is now displayed exactly as uploaded (no reconstruction artifacts)
+- **Sensitivity heatmap** overlaid directly on the real ECG image for photo uploads
+- Improved ECG image extraction: CLAHE contrast enhancement + adaptive thresholding + weighted centroid per column
+- Fixed Docker health check (replaced `curl` with Python `urllib`; added `start_period` for TF startup time)
+- UI redesign: warm paper surfaces, cobalt ink, clinical lab report aesthetic
 
 ---
 

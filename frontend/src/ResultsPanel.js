@@ -12,12 +12,12 @@ const CLASSES = [
 ];
 
 const COLOR = {
-  "Normal (N)": "#10b981",
-  "Supraventricular (S)": "#06b6d4",
-  "Ventricular (V)": "#ef4444",
-  "Fusion (F)": "#f59e0b",
-  "Unclassifiable (Q)": "#8b5cf6",
-  Error: "#4a6a8a",
+  "Normal (N)": "#0f9d8a",
+  "Supraventricular (S)": "#3d55e6",
+  "Ventricular (V)": "#c2362b",
+  "Fusion (F)": "#d98324",
+  "Unclassifiable (Q)": "#5b4bd6",
+  Error: "#8a8c9c",
 };
 
 const ICON = {
@@ -31,29 +31,29 @@ const ICON = {
 
 const SEV = {
   "Normal (N)": {
-    bg: "rgba(16,185,129,0.07)",
-    border: "#10b981",
-    text: "#34d399",
+    bg: "rgba(15,157,138,0.07)",
+    border: "#0f9d8a",
+    text: "#2cc2ab",
   },
   "Supraventricular (S)": {
-    bg: "rgba(6,182,212,0.07)",
-    border: "#06b6d4",
-    text: "#22d3ee",
+    bg: "rgba(43,68,214,0.07)",
+    border: "#3d55e6",
+    text: "#6b7fff",
   },
   "Ventricular (V)": {
-    bg: "rgba(239,68,68,0.07)",
-    border: "#ef4444",
-    text: "#fca5a5",
+    bg: "rgba(194,54,43,0.07)",
+    border: "#c2362b",
+    text: "#dc4a3e",
   },
   "Fusion (F)": {
-    bg: "rgba(245,158,11,0.07)",
-    border: "#f59e0b",
-    text: "#fbbf24",
+    bg: "rgba(217,131,36,0.07)",
+    border: "#d98324",
+    text: "#d98324",
   },
   "Unclassifiable (Q)": {
-    bg: "rgba(139,92,246,0.07)",
-    border: "#8b5cf6",
-    text: "#c4b5fd",
+    bg: "rgba(91,75,214,0.07)",
+    border: "#5b4bd6",
+    text: "#7564f0",
   },
 };
 
@@ -63,7 +63,7 @@ export default function ResultsPanel({ data }) {
   const [tab, setTab] = useState("overview");
   const [sensitivity, setSensitivity] = useState(null);
   const [pertLoading, setPertLoading] = useState(false);
-  const { signal, predictions, ensemble_probs } = data;
+  const { signal, predictions, ensemble_probs, source_image } = data;
 
   const valid = Object.entries(predictions).filter(
     ([, r]) => r.prediction && r.prediction !== "Error",
@@ -72,8 +72,9 @@ export default function ResultsPanel({ data }) {
   valid.forEach(
     ([, r]) => (counts[r.prediction] = (counts[r.prediction] || 0) + 1),
   );
-  const consensus =
-    (Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "Unknown").trim();
+  const consensus = (
+    Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "Unknown"
+  ).trim();
   const sev = SEV[consensus] || SEV["Normal (N)"];
   const predClassIdx = CLASSES.indexOf(consensus);
 
@@ -161,6 +162,20 @@ export default function ResultsPanel({ data }) {
       {/* ── OVERVIEW ── */}
       {tab === "overview" && (
         <div style={s.col}>
+          {/* Real image preview for photo uploads */}
+          {source_image && (
+            <div style={s.card} className="card-hover">
+              <div style={s.cardHead}>
+                <span style={s.cardTitle}>Uploaded ECG Image</span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Original · unmodified</span>
+              </div>
+              <img
+                src={source_image}
+                alt="Uploaded ECG"
+                style={{ width: "100%", borderRadius: "var(--r-md)", display: "block", maxHeight: 220, objectFit: "contain" }}
+              />
+            </div>
+          )}
           {/* Verdict */}
           <div
             style={{
@@ -210,8 +225,8 @@ export default function ResultsPanel({ data }) {
                   <span
                     style={{
                       ...s.badge,
-                      background: "rgba(16,185,129,0.12)",
-                      color: "#34d399",
+                      background: "rgba(15,157,138,0.12)",
+                      color: "#2cc2ab",
                     }}
                   >
                     Active
@@ -256,18 +271,73 @@ export default function ResultsPanel({ data }) {
             )}
             {sensitivity && (
               <>
-                <ECGChart
-                  signal={signal}
-                  height={180}
-                  sensitivity={sensitivity}
-                  accentColor={sev.border}
-                />
+                {source_image ? (
+                  <div style={{ position: "relative", width: "100%" }}>
+                    <img
+                      src={source_image}
+                      alt="Uploaded ECG"
+                      style={{
+                        width: "100%",
+                        height: 180,
+                        objectFit: "fill",
+                        borderRadius: "var(--r-md)",
+                        display: "block",
+                      }}
+                    />
+                    {/* Sensitivity overlay on top of real image */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: 180,
+                        display: "flex",
+                        borderRadius: "var(--r-md)",
+                        overflow: "hidden",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {sensitivity.map((val, i) => {
+                        let r, g, b;
+                        if (val < 0.5) {
+                          const t = val * 2;
+                          r = Math.round(43 + t * (217 - 43));
+                          g = Math.round(68 + t * (131 - 68));
+                          b = Math.round(214 + t * (36 - 214));
+                        } else {
+                          const t = (val - 0.5) * 2;
+                          r = Math.round(217 + t * (194 - 217));
+                          g = Math.round(131 + t * (54 - 131));
+                          b = Math.round(36 + t * (43 - 36));
+                        }
+                        return (
+                          <div
+                            key={i}
+                            style={{
+                              flex: 1,
+                              background: `rgb(${r},${g},${b})`,
+                              opacity: 0.12 + val * 0.38,
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <ECGChart
+                    signal={signal}
+                    height={180}
+                    sensitivity={sensitivity}
+                    accentColor={sev.border}
+                  />
+                )}
                 <div style={s.heatLegend}>
-                  <span style={{ color: "#06b6d4", fontSize: 11 }}>
+                  <span style={{ color: "#3d55e6", fontSize: 11 }}>
                     ● Low impact
                   </span>
                   <div style={s.heatGradBar} />
-                  <span style={{ color: "#ef4444", fontSize: 11 }}>
+                  <span style={{ color: "#c2362b", fontSize: 11 }}>
                     High impact ●
                   </span>
                 </div>
@@ -330,7 +400,7 @@ export default function ResultsPanel({ data }) {
                                 style={{
                                   ...s.regionBarFill,
                                   width: `${w.score * 100}%`,
-                                  background: `linear-gradient(90deg, ${sev.border}, #ef4444)`,
+                                  background: `linear-gradient(90deg, ${sev.border}, #c2362b)`,
                                 }}
                               />
                             </div>
@@ -381,7 +451,7 @@ export default function ResultsPanel({ data }) {
                       style={{
                         fontSize: 11,
                         fontWeight: 700,
-                        color: agree ? "#34d399" : "#fbbf24",
+                        color: agree ? "#2cc2ab" : "#d98324",
                       }}
                     >
                       {agree ? "✓ Agree" : "⚠ Disagree"}
@@ -663,7 +733,7 @@ export default function ResultsPanel({ data }) {
                       <td
                         style={{
                           ...s.td,
-                          color: DL_NAMES.has(name) ? "#818cf8" : "#34d399",
+                          color: DL_NAMES.has(name) ? "#6b7fff" : "#2cc2ab",
                           fontWeight: 600,
                           fontSize: 11,
                         }}
@@ -728,9 +798,9 @@ export default function ResultsPanel({ data }) {
                         padding: "2px 6px",
                         borderRadius: "var(--r-xs)",
                         background: DL_NAMES.has(name)
-                          ? "rgba(129,140,248,0.12)"
-                          : "rgba(52,211,153,0.12)",
-                        color: DL_NAMES.has(name) ? "#818cf8" : "#34d399",
+                          ? "rgba(91,75,214,0.12)"
+                          : "rgba(15,157,138,0.12)",
+                        color: DL_NAMES.has(name) ? "#6b7fff" : "#2cc2ab",
                       }}
                     >
                       {DL_NAMES.has(name) ? "DL" : "ML"}
@@ -817,7 +887,7 @@ export default function ResultsPanel({ data }) {
                   )}
                   {pred.error && (
                     <div
-                      style={{ fontSize: 11, color: "#ef4444", marginTop: 8 }}
+                      style={{ fontSize: 11, color: "#c2362b", marginTop: 8 }}
                     >
                       ⚠ {pred.error}
                     </div>
@@ -832,97 +902,334 @@ export default function ResultsPanel({ data }) {
       {/* ── Clinical Summary ── */}
       {(() => {
         const agreePct = counts[consensus] / valid.length;
-        const consensusLevel = agreePct >= 0.875 ? 'HIGH' : agreePct >= 0.625 ? 'MODERATE' : 'LOW';
-        const consensusColor = agreePct >= 0.875 ? '#059669' : agreePct >= 0.625 ? '#d97706' : '#dc2626';
+        const consensusLevel =
+          agreePct >= 0.875 ? "HIGH" : agreePct >= 0.625 ? "MODERATE" : "LOW";
+        const consensusColor =
+          agreePct >= 0.875
+            ? "#0f9d8a"
+            : agreePct >= 0.625
+              ? "#d98324"
+              : "#dc4a3e";
 
         // DL vs ML disagreement
-        const dlC = dlPreds.length ? (() => { const c = {}; dlPreds.forEach(([,r]) => c[r.prediction] = (c[r.prediction]||0)+1); return Object.keys(c).sort((a,b)=>c[b]-c[a])[0]; })() : null;
-        const mlC = mlPreds.length ? (() => { const c = {}; mlPreds.forEach(([,r]) => c[r.prediction] = (c[r.prediction]||0)+1); return Object.keys(c).sort((a,b)=>c[b]-c[a])[0]; })() : null;
+        const dlC = dlPreds.length
+          ? (() => {
+              const c = {};
+              dlPreds.forEach(
+                ([, r]) => (c[r.prediction] = (c[r.prediction] || 0) + 1),
+              );
+              return Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+            })()
+          : null;
+        const mlC = mlPreds.length
+          ? (() => {
+              const c = {};
+              mlPreds.forEach(
+                ([, r]) => (c[r.prediction] = (c[r.prediction] || 0) + 1),
+              );
+              return Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+            })()
+          : null;
         const dlMlDisagree = dlC && mlC && dlC !== mlC;
-        const dlStrongConf = dlPreds.length ? dlPreds.filter(([,r])=>r.prediction===dlC).reduce((s,[,r])=>s+r.confidence,0)/dlPreds.filter(([,r])=>r.prediction===dlC).length : 0;
+        const dlStrongConf = dlPreds.length
+          ? dlPreds
+              .filter(([, r]) => r.prediction === dlC)
+              .reduce((s, [, r]) => s + r.confidence, 0) /
+            dlPreds.filter(([, r]) => r.prediction === dlC).length
+          : 0;
 
         // Recommendation logic
         let recIcon, recColor, recBg, recBorder, recommendation;
-        if (consensus === 'Ventricular (V)') {
-          recIcon = '🚨'; recColor = '#b91c1c'; recBg = 'rgba(185,28,28,0.06)'; recBorder = '#dc2626';
-          recommendation = 'Urgent clinical review required. Ventricular arrhythmia detected — consult a cardiologist immediately.';
-        } else if (consensus === 'Normal (N)') {
-          recIcon = '✅'; recColor = '#047857'; recBg = 'rgba(4,120,87,0.06)'; recBorder = '#059669';
-          recommendation = consensusLevel === 'HIGH'
-            ? 'High-confidence normal sinus rhythm. Routine follow-up as per clinical protocol.'
-            : 'Normal sinus rhythm detected. Moderate model agreement — routine follow-up recommended.';
-        } else if (consensusLevel === 'LOW' || dlMlDisagree) {
-          recIcon = '⚠️'; recColor = '#b45309'; recBg = 'rgba(180,83,9,0.06)'; recBorder = '#d97706';
-          recommendation = 'Clinical review advised. Low model consensus or DL/ML disagreement — manual cardiologist interpretation recommended.';
-        } else if (consensus === 'Supraventricular (S)') {
-          recIcon = '⚠️'; recColor = '#0e7490'; recBg = 'rgba(14,116,144,0.06)'; recBorder = '#0891b2';
-          recommendation = 'Cardiology referral recommended. Consider Holter monitoring and rate control evaluation.';
-        } else if (consensus === 'Fusion (F)') {
-          recIcon = '⚠️'; recColor = '#b45309'; recBg = 'rgba(180,83,9,0.06)'; recBorder = '#d97706';
-          recommendation = 'Fusion beat detected. Clinical review recommended to assess underlying rhythm.';
+        if (consensus === "Ventricular (V)") {
+          recIcon = "🚨";
+          recColor = "#c2362b";
+          recBg = "rgba(194,54,43,0.06)";
+          recBorder = "#dc4a3e";
+          recommendation =
+            "Urgent clinical review required. Ventricular arrhythmia detected — consult a cardiologist immediately.";
+        } else if (consensus === "Normal (N)") {
+          recIcon = "✅";
+          recColor = "#0f8a79";
+          recBg = "rgba(15,138,121,0.06)";
+          recBorder = "#0f9d8a";
+          recommendation =
+            consensusLevel === "HIGH"
+              ? "High-confidence normal sinus rhythm. Routine follow-up as per clinical protocol."
+              : "Normal sinus rhythm detected. Moderate model agreement — routine follow-up recommended.";
+        } else if (consensusLevel === "LOW" || dlMlDisagree) {
+          recIcon = "⚠️";
+          recColor = "#b8650f";
+          recBg = "rgba(184,101,15,0.06)";
+          recBorder = "#d98324";
+          recommendation =
+            "Clinical review advised. Low model consensus or DL/ML disagreement — manual cardiologist interpretation recommended.";
+        } else if (consensus === "Supraventricular (S)") {
+          recIcon = "⚠️";
+          recColor = "#2b44d6";
+          recBg = "rgba(43,68,214,0.06)";
+          recBorder = "#2b44d6";
+          recommendation =
+            "Cardiology referral recommended. Consider Holter monitoring and rate control evaluation.";
+        } else if (consensus === "Fusion (F)") {
+          recIcon = "⚠️";
+          recColor = "#b8650f";
+          recBg = "rgba(184,101,15,0.06)";
+          recBorder = "#d98324";
+          recommendation =
+            "Fusion beat detected. Clinical review recommended to assess underlying rhythm.";
         } else {
-          recIcon = '🔍'; recColor = '#6d28d9'; recBg = 'rgba(109,40,217,0.06)'; recBorder = '#7c3aed';
-          recommendation = 'Unclassifiable morphology. Manual review by a qualified cardiologist is required.';
+          recIcon = "🔍";
+          recColor = "#5b4bd6";
+          recBg = "rgba(91,75,214,0.06)";
+          recBorder = "#7564f0";
+          recommendation =
+            "Unclassifiable morphology. Manual review by a qualified cardiologist is required.";
         }
 
         return (
-          <div style={{ marginTop: 24, border: `2px solid ${recBorder}`, borderRadius: 'var(--r-lg)', overflow: 'hidden' }}>
+          <div
+            style={{
+              marginTop: 24,
+              border: `2px solid ${recBorder}`,
+              borderRadius: "var(--r-lg)",
+              overflow: "hidden",
+            }}
+          >
             {/* Header bar */}
-            <div style={{ background: recBorder, padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                background: recBorder,
+                padding: "10px 20px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
               <span style={{ fontSize: 16 }}>{recIcon}</span>
-              <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '1px' }}>Clinical Summary</span>
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 800,
+                  color: "#fff",
+                  textTransform: "uppercase",
+                  letterSpacing: "1px",
+                }}
+              >
+                Clinical Summary
+              </span>
             </div>
 
-            <div style={{ background: recBg, padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-
+            <div
+              style={{
+                background: recBg,
+                padding: "20px 24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 14,
+              }}
+            >
               {/* Final prediction line */}
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Final Prediction</span>
-                <span style={{ fontSize: 22, fontWeight: 800, color: recColor }}>{consensus}</span>
-                <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-secondary)' }}>— {(avgConf * 100).toFixed(1)}% avg confidence</span>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: "var(--text-muted)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.8px",
+                  }}
+                >
+                  Final Prediction
+                </span>
+                <span
+                  style={{ fontSize: 22, fontWeight: 800, color: recColor }}
+                >
+                  {consensus}
+                </span>
+                <span
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    color: "var(--text-secondary)",
+                  }}
+                >
+                  — {(avgConf * 100).toFixed(1)}% avg confidence
+                </span>
               </div>
 
               {/* Disagreement alert */}
               {dlMlDisagree && (
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 14px', background: 'rgba(180,83,9,0.08)', border: '1px solid #d97706', borderRadius: 'var(--r-md)' }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    gap: 10,
+                    padding: "10px 14px",
+                    background: "rgba(184,101,15,0.08)",
+                    border: "1px solid #d98324",
+                    borderRadius: "var(--r-md)",
+                  }}
+                >
                   <span style={{ fontSize: 16, flexShrink: 0 }}>⚠️</span>
                   <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#b45309', marginBottom: 3 }}>DISAGREEMENT: DL vs ML</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                      DL models predict <span style={{ fontWeight: 700, color: COLOR[dlC] }}>{dlC}</span>
-                      {dlStrongConf > 0 && <span style={{ color: 'var(--text-muted)' }}> ({(dlStrongConf*100).toFixed(0)}% conf)</span>}
-                      {' · '}ML models predict <span style={{ fontWeight: 700, color: COLOR[mlC] }}>{mlC}</span>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: "#b8650f",
+                        marginBottom: 3,
+                      }}
+                    >
+                      DISAGREEMENT: DL vs ML
+                    </div>
+                    <div
+                      style={{ fontSize: 12, color: "var(--text-secondary)" }}
+                    >
+                      DL models predict{" "}
+                      <span style={{ fontWeight: 700, color: COLOR[dlC] }}>
+                        {dlC}
+                      </span>
+                      {dlStrongConf > 0 && (
+                        <span style={{ color: "var(--text-muted)" }}>
+                          {" "}
+                          ({(dlStrongConf * 100).toFixed(0)}% conf)
+                        </span>
+                      )}
+                      {" · "}ML models predict{" "}
+                      <span style={{ fontWeight: 700, color: COLOR[mlC] }}>
+                        {mlC}
+                      </span>
                     </div>
                   </div>
                 </div>
               )}
 
               {/* Stats row */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3,1fr)",
+                  gap: 10,
+                }}
+              >
                 {[
-                  { label: 'Models Agree', value: `${counts[consensus]}/${valid.length}`, sub: `${((counts[consensus]/valid.length)*100).toFixed(0)}%` },
-                  { label: 'Consensus', value: consensusLevel, sub: `${(agreePct*100).toFixed(0)}% agreement`, color: consensusColor },
-                  { label: 'Ensemble Prob', value: `${(ensProbs[topDiseaseIdx]*100).toFixed(1)}%`, sub: 'avg across models' },
+                  {
+                    label: "Models Agree",
+                    value: `${counts[consensus]}/${valid.length}`,
+                    sub: `${((counts[consensus] / valid.length) * 100).toFixed(0)}%`,
+                  },
+                  {
+                    label: "Consensus",
+                    value: consensusLevel,
+                    sub: `${(agreePct * 100).toFixed(0)}% agreement`,
+                    color: consensusColor,
+                  },
+                  {
+                    label: "Ensemble Prob",
+                    value: `${(ensProbs[topDiseaseIdx] * 100).toFixed(1)}%`,
+                    sub: "avg across models",
+                  },
                 ].map(({ label, value, sub, color }) => (
-                  <div key={label} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--r-md)', padding: '12px 14px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 4 }}>{label}</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: color || recColor }}>{value}</div>
-                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{sub}</div>
+                  <div
+                    key={label}
+                    style={{
+                      background: "var(--bg-card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--r-md)",
+                      padding: "12px 14px",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 11,
+                        color: "var(--text-muted)",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.4px",
+                        marginBottom: 4,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 18,
+                        fontWeight: 800,
+                        color: color || recColor,
+                      }}
+                    >
+                      {value}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 10,
+                        color: "var(--text-muted)",
+                        marginTop: 2,
+                      }}
+                    >
+                      {sub}
+                    </div>
                   </div>
                 ))}
               </div>
 
               {/* Recommendation */}
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 16px', background: 'var(--bg-card)', border: `1px solid ${recBorder}`, borderRadius: 'var(--r-md)' }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  padding: "12px 16px",
+                  background: "var(--bg-card)",
+                  border: `1px solid ${recBorder}`,
+                  borderRadius: "var(--r-md)",
+                }}
+              >
                 <span style={{ fontSize: 18, flexShrink: 0 }}>💊</span>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 4 }}>Recommendation</div>
-                  <div style={{ fontSize: 13, color: recColor, fontWeight: 600, lineHeight: 1.6 }}>{recommendation}</div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: "var(--text-muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.6px",
+                      marginBottom: 4,
+                    }}
+                  >
+                    Recommendation
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: recColor,
+                      fontWeight: 600,
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {recommendation}
+                  </div>
                 </div>
               </div>
 
-              <div style={{ fontSize: 10, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.6 }}>
-                ⚠ Research tool only · Not FDA-approved · Always consult a qualified cardiologist
+              <div
+                style={{
+                  fontSize: 10,
+                  color: "var(--text-muted)",
+                  textAlign: "center",
+                  lineHeight: 1.6,
+                }}
+              >
+                ⚠ Research tool only · Not FDA-approved · Always consult a
+                qualified cardiologist
               </div>
             </div>
           </div>
@@ -1064,7 +1371,7 @@ const s = {
     maxWidth: 200,
     height: 6,
     borderRadius: "var(--r-sm)",
-    background: "linear-gradient(90deg, #06b6d4, #f59e0b, #ef4444)",
+    background: "linear-gradient(90deg, #3d55e6, #d98324, #c2362b)",
   },
   statsRow: { display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12 },
   stat: {
@@ -1174,7 +1481,7 @@ const s = {
     whiteSpace: "nowrap",
     fontSize: 11,
   },
-  tr: { borderBottom: "1px solid rgba(15,31,53,0.08)" },
+  tr: { borderBottom: "1px solid rgba(18,22,48,0.08)" },
   td: {
     padding: "8px 10px",
     color: "var(--text-secondary)",
