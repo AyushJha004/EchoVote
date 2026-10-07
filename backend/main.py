@@ -116,24 +116,39 @@ def load_models():
 
         builders = {'1D-CNN': _build_1d_cnn, 'BiLSTM': _build_bilstm, 'CNN-LSTM': _build_cnn_lstm}
 
+        # Patch Dense to ignore quantization_config (Keras version mismatch)
+        original_dense_init = tf.keras.layers.Dense.__init__
+        def _patched_dense_init(self, *args, **kwargs):
+            kwargs.pop('quantization_config', None)
+            original_dense_init(self, *args, **kwargs)
+        tf.keras.layers.Dense.__init__ = _patched_dense_init
+
         for name, fnames in dl_files.items():
             for fname in fnames:
                 path = os.path.join(model_dir, fname)
                 if not os.path.exists(path):
                     continue
                 try:
-                    import tempfile, zipfile, shutil
-                    tmpdir = tempfile.mkdtemp()
-                    with zipfile.ZipFile(path) as zf:
-                        zf.extractall(tmpdir)
-                    model = builders[name]()
-                    model.load_weights(os.path.join(tmpdir, 'model.weights.h5'))
-                    shutil.rmtree(tmpdir)
+                    model = tf.keras.models.load_model(path, compile=False)
                     models[name] = model
                     print(f"✅ {name} loaded ({fname})")
                     break
-                except Exception as e:
-                    print(f"⚠️  {name} ({fname}) failed: {e}")
+                except Exception as e1:
+                    print(f"⚠️  {name} load_model failed: {e1}")
+                    # Fallback: build architecture and load weights only
+                    try:
+                        import tempfile, zipfile, shutil
+                        tmpdir = tempfile.mkdtemp()
+                        with zipfile.ZipFile(path) as zf:
+                            zf.extractall(tmpdir)
+                        model = builders[name]()
+                        model.load_weights(os.path.join(tmpdir, 'model.weights.h5'))
+                        shutil.rmtree(tmpdir)
+                        models[name] = model
+                        print(f"✅ {name} loaded via weights fallback ({fname})")
+                        break
+                    except Exception as e2:
+                        print(f"⚠️  {name} ({fname}) weights fallback also failed: {e2}")
     except Exception as e:
         print(f"⚠️  DL model setup failed: {e}")
 
