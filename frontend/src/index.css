@@ -1,4 +1,35 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap");
+
+/* ── Landing page design tokens (dark clinical theme) ── */
+:root {
+  --lp-bg: oklch(0.16 0.03 255);
+  --lp-fg: oklch(0.96 0.01 80);
+  --lp-card: oklch(0.2 0.035 255);
+  --lp-primary: oklch(0.66 0.17 250);
+  --lp-muted: oklch(0.72 0.03 250);
+  --lp-accent: oklch(0.8 0.16 155);
+  --lp-border: oklch(0.32 0.04 255);
+  --lp-grid-line: oklch(0.66 0.17 250 / 0.08);
+  --lp-glow: 0 0 40px -6px oklch(0.66 0.17 250 / 0.6);
+}
+
+.lp-ecg-grid {
+  background-image:
+    linear-gradient(var(--lp-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--lp-grid-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.lp-glow {
+  box-shadow: var(--lp-glow);
+}
+.ecg-trace {
+  stroke-dasharray: 1400;
+  stroke-dashoffset: 1400;
+  animation: ecg-draw 3.2s linear infinite;
+}
+@keyframes ecg-draw {
+  to { stroke-dashoffset: 0; }
+}
 
 /* ============================================================
    CardiaScan v2 — "Clinical Lab Report"
@@ -16,73 +47,72 @@
 }
 
 :root {
-  /* Surfaces */
-  --bg-base: #f6f4ef; /* warm paper */
-  --bg-surface: #fffdf9;
-  --bg-elevated: #faf8f3;
-  --bg-card: #fffdf9;
-  --bg-hover: #efece4;
-  --bg-input: #faf8f3;
-  --bg-sidebar: #111a3a; /* cobalt night */
-  --bg-topbar: #f6f4ef;
+  /* ── Dark theme — matches landing page ── */
+  --bg-base:     oklch(0.14 0.03 255);
+  --bg-surface:  oklch(0.17 0.03 255);
+  --bg-elevated: oklch(0.19 0.03 255);
+  --bg-card:     oklch(0.20 0.035 255);
+  --bg-hover:    oklch(0.24 0.035 255);
+  --bg-input:    oklch(0.19 0.03 255);
+  --bg-sidebar:  oklch(0.13 0.04 258);
+  --bg-topbar:   oklch(0.16 0.03 255);
 
   /* Lines */
-  --border: #e4dfd3;
-  --border-strong: #cfc8b8;
-  --border-focus: #2b44d6;
+  --border:       oklch(0.30 0.04 255);
+  --border-strong:oklch(0.36 0.05 255);
+  --border-focus: oklch(0.66 0.17 250);
 
   /* Ink */
-  --text-primary: #121630;
-  --text-secondary: #4a4f68;
-  --text-muted: #8a8c9c;
-  --text-inverse: #ffffff;
-  --text-sidebar: #9aa3c7;
+  --text-primary:   oklch(0.96 0.01 80);
+  --text-secondary: oklch(0.78 0.03 250);
+  --text-muted:     oklch(0.62 0.03 250);
+  --text-inverse:   #ffffff;
+  --text-sidebar:   oklch(0.72 0.04 255);
 
   /* Accent system */
-  --blue: #2b44d6; /* cobalt — interactive */
-  --blue-light: #3d55e6;
-  --blue-bright: #6b7fff;
-  --teal: #0f9d8a; /* signal — agreement / normal */
-  --teal-light: #2cc2ab;
-  --cyan: #0f9d8a;
+  --blue:        oklch(0.60 0.17 250);
+  --blue-light:  oklch(0.66 0.17 250);
+  --blue-bright: oklch(0.74 0.15 250);
+  --teal:        oklch(0.65 0.14 175);
+  --teal-light:  oklch(0.72 0.14 175);
+  --cyan:        oklch(0.65 0.14 175);
 
   /* Status */
-  --green: #0f8a79;
-  --green-light: #0f9d8a;
-  --green-bright: #2cc2ab;
-  --green-tint: #e6f5f1;
-  --green-border: #b9e3da;
-  --amber: #b8650f;
-  --amber-light: #d98324;
-  --red: #c2362b;
-  --red-light: #dc4a3e;
-  --purple: #5b4bd6;
-  --purple-light: #7564f0;
+  --green:        oklch(0.62 0.14 160);
+  --green-light:  oklch(0.68 0.14 160);
+  --green-bright: oklch(0.74 0.14 160);
+  --green-tint:   oklch(0.22 0.04 160);
+  --green-border: oklch(0.32 0.07 160);
+  --amber:        oklch(0.68 0.15 65);
+  --amber-light:  oklch(0.74 0.15 65);
+  --red:          oklch(0.58 0.20 25);
+  --red-light:    oklch(0.64 0.20 25);
+  --purple:       oklch(0.58 0.18 290);
+  --purple-light: oklch(0.66 0.18 290);
 
-  /* Gradients — used in exactly two places */
-  --grad-brand: linear-gradient(180deg, #3d55e6 0%, #2b44d6 100%);
-  --grad-sidebar: #111a3a;
-  --grad-header: linear-gradient(180deg, #3d55e6 0%, #2b44d6 100%);
+  /* Gradients */
+  --grad-brand: linear-gradient(135deg, oklch(0.66 0.17 250) 0%, oklch(0.58 0.20 265) 100%);
+  --grad-sidebar: oklch(0.13 0.04 258);
+  --grad-header:  linear-gradient(135deg, oklch(0.66 0.17 250) 0%, oklch(0.58 0.20 265) 100%);
 
   /* Type */
-  --font:
-    "Inter Tight", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font: "Manrope", "Inter Tight", -apple-system, BlinkMacSystemFont, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
 
-  /* Radii — deliberately tight */
-  --r-xs: 2px;
-  --r-sm: 4px;
-  --r-md: 6px;
-  --r-lg: 8px;
-  --r-xl: 10px;
-  --r-2xl: 14px;
+  /* Radii */
+  --r-xs: 3px;
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 10px;
+  --r-xl: 12px;
+  --r-2xl: 16px;
 
-  /* Shadows — almost none; lines do the work */
-  --shadow-xs: 0 1px 0 rgba(18, 22, 48, 0.04);
-  --shadow-sm: 0 1px 2px rgba(18, 22, 48, 0.06);
-  --shadow-md: 0 6px 20px -8px rgba(18, 22, 48, 0.14);
-  --shadow-lg: 0 18px 40px -16px rgba(18, 22, 48, 0.22);
-  --shadow-blue: 0 6px 16px -6px rgba(43, 68, 214, 0.55);
+  /* Shadows */
+  --shadow-xs:   0 1px 2px rgba(0,0,0,0.25);
+  --shadow-sm:   0 2px 6px rgba(0,0,0,0.30);
+  --shadow-md:   0 6px 20px rgba(0,0,0,0.40);
+  --shadow-lg:   0 18px 40px rgba(0,0,0,0.50);
+  --shadow-blue: 0 6px 24px -4px oklch(0.66 0.17 250 / 0.55);
 
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
   --t-fast: all 0.15s var(--ease);
@@ -223,9 +253,9 @@ textarea:focus {
 
 /* ── Existing selectors, restyled ── */
 .drop-zone:hover {
-  border-color: var(--blue) !important;
-  background: #f0f2fd !important;
-  box-shadow: none !important;
+  border-color: var(--blue-light) !important;
+  background: oklch(0.22 0.06 255) !important;
+  box-shadow: 0 0 0 3px oklch(0.66 0.17 250 / 0.15) !important;
 }
 .nav-btn {
   position: relative;
@@ -259,6 +289,7 @@ textarea:focus {
 .card-hover:hover {
   border-color: var(--border-strong) !important;
   box-shadow: var(--shadow-md) !important;
+  background: var(--bg-elevated) !important;
 }
 .btn-primary {
   background: var(--grad-brand) !important;
@@ -281,6 +312,14 @@ textarea:focus {
 .tab-btn:hover:not(.tab-active) {
   background: var(--bg-hover) !important;
   color: var(--text-primary) !important;
+}
+
+/* ECG grid for app shell */
+.app-ecg-grid {
+  background-image:
+    linear-gradient(oklch(0.66 0.17 250 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(0.66 0.17 250 / 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
 }
 
 /* ============================================================

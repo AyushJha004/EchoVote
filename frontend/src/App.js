@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from "react";
 import "./index.css";
 import ECGChart from "./ECGChart";
 import ResultsPanel from "./ResultsPanel";
+import LandingPage from "./LandingPage";
+import { LoginPage, SignupPage } from "./AuthPages";
 
 const API = process.env.REACT_APP_API_BASE || "http://localhost:8000";
 
@@ -13,6 +15,8 @@ const NAV = [
 ];
 
 export default function App() {
+  const [authPage, setAuthPage] = useState("landing"); // "landing" | "login" | "signup" | "app"
+  const [user, setUser] = useState(null); // { name, org }
   const [page, setPage] = useState("upload");
   const [inputTab, setInputTab] = useState("csv");
   const [loading, setLoading] = useState(false);
@@ -149,6 +153,10 @@ export default function App() {
     await post("/api/predict/manual", JSON.stringify({ values: sig }));
   };
 
+  const initials = user?.name
+    ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()
+    : "?";
+
   const Sidebar = () => (
     <aside
       style={{
@@ -174,6 +182,30 @@ export default function App() {
           </button>
         ))}
       </nav>
+
+      {/* ── Profile + Logout ── */}
+      <div style={st.profileSection}>
+        <div style={st.profileChip}>
+          <div style={st.avatar}>{initials}</div>
+          {sidebarOpen && (
+            <div style={st.profileInfo}>
+              <div style={st.profileName}>{user?.name || "Guest"}</div>
+              {user?.org && <div style={st.profileOrg}>{user.org}</div>}
+            </div>
+          )}
+        </div>
+        {sidebarOpen && (
+          <button style={st.logoutBtn} onClick={handleLogout} title="Log out">
+            ⎋ Log out
+          </button>
+        )}
+        {!sidebarOpen && (
+          <button style={{ ...st.logoutBtn, padding: "8px", fontSize: 16 }} onClick={handleLogout} title="Log out">
+            ⎋
+          </button>
+        )}
+      </div>
+
       <div style={st.statusBar}>
         <div
           style={{
@@ -1204,32 +1236,39 @@ export default function App() {
     </div>
   );
 
+  const handleLogin = (userData) => { setUser(userData); setAuthPage("app"); };
+  const handleLogout = () => { setUser(null); setResults(null); setHistory([]); setAuthPage("landing"); };
+
+  if (authPage === "landing")
+    return <LandingPage onLogin={() => setAuthPage("login")} onSignup={() => setAuthPage("signup")} />;
+  if (authPage === "login")
+    return <LoginPage onLogin={handleLogin} onSignup={() => setAuthPage("signup")} onLogoClick={() => setAuthPage("landing")} />;
+  if (authPage === "signup")
+    return <SignupPage onSignup={handleLogin} onLogin={() => setAuthPage("login")} onLogoClick={() => setAuthPage("landing")} />;
+
   return (
     <div style={st.app}>
       <Sidebar />
       <main style={st.main}>
-        <div style={st.topBar}>
-          <div>
+        <div style={st.topBar} className="app-ecg-grid">
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={st.topTitle}>
-              {
-                {
-                  upload: "EchoVote",
-                  history: "History",
-                  guide: "Clinical Guide",
-                  about: "About",
-                }[page]
-              }
+              {{ upload: "EchoVote", history: "History", guide: "Clinical Guide", about: "About" }[page]}
             </div>
+            {page === "upload" && (
+              <span style={st.topBadge}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: serverOk ? "var(--green-bright)" : "var(--amber-light)", display: "inline-block" }} />
+                {serverOk ? (demoMode ? "Demo" : "Live") : "Offline"}
+              </span>
+            )}
           </div>
-          {results && page === "upload" && (
-            <button
-              style={st.clearBtn}
-              className="btn-primary"
-              onClick={() => setResults(null)}
-            >
-              + New Analysis
-            </button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {results && page === "upload" && (
+              <button style={st.clearBtn} className="btn-primary" onClick={() => setResults(null)}>
+                + New Analysis
+              </button>
+            )}
+          </div>
         </div>
 
         <div style={st.content}>
@@ -1368,6 +1407,19 @@ const st = {
     letterSpacing: "-0.5px",
   },
   topSub: { fontSize: 13, color: "var(--text-secondary)", marginTop: 4 },
+  topBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 11,
+    fontFamily: "var(--mono)",
+    color: "var(--text-muted)",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border)",
+    borderRadius: 999,
+    padding: "3px 10px",
+    letterSpacing: "0.04em",
+  },
   clearBtn: {
     padding: "10px 20px",
     background: "var(--blue-light)",
@@ -1621,5 +1673,64 @@ const st = {
     fontWeight: 700,
     color: "var(--red-light)",
     marginBottom: 10,
+  },
+  profileSection: {
+    borderTop: "1px solid var(--border)",
+    padding: "12px 10px 4px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  profileChip: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "8px 6px",
+    borderRadius: "var(--r-md)",
+    background: "rgba(255,255,255,0.04)",
+  },
+  avatar: {
+    width: 34,
+    height: 34,
+    borderRadius: "50%",
+    background: "var(--blue-light)",
+    color: "#fff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 13,
+    fontWeight: 700,
+    flexShrink: 0,
+    boxShadow: "var(--shadow-blue)",
+  },
+  profileInfo: { minWidth: 0, flex: 1 },
+  profileName: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "var(--text-inverse)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  profileOrg: {
+    fontSize: 11,
+    color: "var(--text-sidebar)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    marginTop: 1,
+  },
+  logoutBtn: {
+    width: "100%",
+    padding: "8px 10px",
+    background: "transparent",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "var(--r-md)",
+    color: "var(--text-sidebar)",
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: "pointer",
+    textAlign: "left",
+    transition: "var(--t)",
   },
 };
