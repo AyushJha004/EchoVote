@@ -211,8 +211,8 @@ def run_predict(signal):
     else:
         signal_scaled = signal.reshape(1, -1)
 
-    sig_norm = signal / (signal.max() + 1e-8)
-    sig_dl   = sig_norm.reshape(1, 187, 1)
+    # DL models expect 0-1 range — signal is already 0-1 after scaler-aligned preprocessing
+    sig_dl = (signal / (signal.max() + 1e-8)).reshape(1, 187, 1)
 
     results = {}
     for name, model in models.items():
@@ -308,34 +308,28 @@ async def predict_image(file: UploadFile = File(...)):
 
         h, w = img.shape
 
-        # ── ECG validation ──────────────────────────────────────────────
-        # 1. Reject near-uniform images
-        std = float(np.std(img))
-        if std < 8.0:
+        # ── 1. Reject blank / low-contrast images ───────────────────────
+        if float(np.std(img)) < 8.0:
             raise ValueError("Image appears to be blank or uniform. Please upload a photo of an ECG strip.")
-
-        # 2. Reject very low contrast images
         p5, p95 = np.percentile(img, 5), np.percentile(img, 95)
         if (p95 - p5) < 30:
             raise ValueError("Image has insufficient contrast. Please upload a clear ECG strip photo.")
 
-        # 3. Crop to the central 80% vertically to skip axis labels/borders
-        top = int(h * 0.10)
-        bot = int(h * 0.90)
-        img_crop = img[top:bot, :]
+        # ── 2. Crop central 80% vertically (skip axis labels / borders) ─
+        img_crop = img[int(h * 0.10):int(h * 0.90), :]
 
-        # 4. Resize to working resolution
+        # ── 3. Resize to working resolution ─────────────────────────────
         resized = cv2.resize(img_crop, (187, 256))
 
-        # 5. Normalise brightness — CLAHE for low-contrast photos
+        # ── 4. CLAHE contrast enhancement ───────────────────────────────
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
         resized = clahe.apply(resized)
 
-        # 6. Ensure dark trace on light background
+        # ── 5. Ensure dark trace on light background ─────────────────────
         if np.mean(resized) < 128:
             resized = 255 - resized
 
-        # 7. Adaptive threshold — handles uneven lighting better than Otsu
+        # ── 6. Adaptive threshold ────────────────────────────────────────
         binary = cv2.adaptiveThreshold(
             resized, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
@@ -343,33 +337,34 @@ async def predict_image(file: UploadFile = File(...)):
             blockSize=15, C=6
         )
 
-        # 8. Remove thin noise with morphological opening
+        # ── 7. Morphological opening to remove noise ─────────────────────
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 2))
         binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
 
-        # 9. Per-column: weighted centroid of dark pixels (preserves peak shape)
-        signal = np.zeros(187, dtype=float)
+        # ── 8. Per-column weighted centroid → raw signal ─────────────────
+        rows_idx = np.arange(256, dtype=float)
+        raw = np.zeros(187, dtype=float)
         for col in range(187):
             col_data = binary[:, col].astype(float)
             total = col_data.sum()
-            if total > 0:
-                rows = np.arange(256, dtype=float)
-                signal[col] = float(np.sum(rows * col_data) / total)
-            else:
-                signal[col] = 128.0
+            raw[col] = float(np.sum(rows_idx * col_data) / total) if total > 0 else 128.0
 
-        # 10. Smooth out single-column spikes
-        signal = np.convolve(signal, np.ones(3) / 3, mode='same')
+        # ── 9. Smooth single-column spikes ───────────────────────────────
+        raw = np.convolve(raw, np.ones(3) / 3, mode='same')
 
-        # 11. Validate extracted signal
-        sig_std = float(np.std(signal))
-        sig_range = float(signal.max() - signal.min())
-        if sig_std < 2.0 or sig_range < 5.0:
+        # ── 10. Validate extracted signal ────────────────────────────────
+        if float(np.std(raw)) < 2.0 or float(raw.max() - raw.min()) < 5.0:
             raise ValueError("Could not detect an ECG waveform in this image. Please upload a clear photo of an ECG strip with a visible trace.")
 
-        # 12. Invert so peaks go up, then normalize to 0-1
-        signal = signal.max() - signal
-        signal = (signal - signal.min()) / (signal.max() - signal.min() + 1e-8)
+        # ── 11. Invert (peaks up) and normalize to MIT-BIH distribution ──
+        # MIT-BIH: baseline ~0.20-0.28, QRS peak ~1.0, trailing end ~0.0
+        # We align the extracted signal to this range so the scaler works correctly.
+        raw = raw.max() - raw                              # invert: peaks go up
+        baseline = float(np.percentile(raw, 10))          # isoelectric line
+        peak     = float(np.percentile(raw, 99))          # QRS peak
+        span     = peak - baseline + 1e-8
+        signal   = (raw - baseline) / span                 # 0 at baseline, 1 at peak
+        signal   = np.clip(signal, 0.0, 1.0)              # clamp sub-baseline noise
 
         results, ensemble_probs = run_predict(signal)
 
