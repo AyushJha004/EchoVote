@@ -33,8 +33,6 @@ models/
 
 > **No models?** The app runs in **Demo Mode** automatically — predictions are simulated so you can explore the full UI.
 
-> **Note:** Model files are too large for GitHub (>100 MB). They are stored separately in an S3 bucket. See [Model Storage](#-model-storage-s3) below.
-
 ### 3. Build Docker images
 ```bash
 docker build -t ecg-app-backend:latest -f Dockerfile .
@@ -107,72 +105,6 @@ npm start
 
 ---
 
-## 📦 Model Storage (S3)
-
-Model files are not committed to this repository due to GitHub's 100 MB file size limit. They are stored in a private S3 bucket.
-
-**To pull models before running the app:**
-```bash
-aws s3 sync s3://echovote-models/ ./models/
-```
-
-The EC2 instance (or local machine) needs an IAM role or profile with read access to the bucket. No credentials are hardcoded anywhere — access is granted via IAM.
-
-**Bucket structure:**
-```
-s3://echovote-models/
-├── ecg_1d_cnn.keras
-├── ecg_bilstm.keras
-├── ecg_cnn_lstm.keras
-├── ecg_rf.pkl
-├── ecg_xgb.pkl
-├── ecg_knn.pkl
-├── ecg_svm.pkl
-├── ecg_lr.pkl
-└── ecg_scaler.pkl
-```
-
-To update a model, re-upload the file to S3:
-```bash
-aws s3 cp models/ecg_rf.pkl s3://echovote-models/ecg_rf.pkl
-```
-
----
-
-## ☁️ Deployment (AWS EC2)
-
-The recommended way to run EchoVote publicly without keeping Docker running locally.
-
-### Steps
-1. Launch an EC2 `t3.medium` (or larger) instance — Ubuntu 22.04
-2. Attach an IAM role with `s3:GetObject` on the `echovote-models` bucket
-3. Assign an Elastic IP so the URL stays fixed across restarts
-4. SSH in and run:
-
-```bash
-# Install Docker
-sudo apt update && sudo apt install -y docker.io docker-compose
-sudo usermod -aG docker ubuntu
-
-# Clone repo
-git clone https://github.com/AyushJha004/EchoVote.git
-cd EchoVote
-
-# Pull models from S3
-aws s3 sync s3://echovote-models/ ./models/
-
-# Build and start
-docker build -t ecg-app-backend:latest -f Dockerfile .
-docker build -t ecg-app-frontend:latest -f frontend/Dockerfile.frontend frontend/
-docker-compose up -d
-```
-
-The app will be live at `http://<your-elastic-ip>:3000`.
-
-> For a custom domain, point an A record to the Elastic IP via Route 53 or any registrar.
-
----
-
 ## 📊 Testing with Real ECG Data
 
 The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per beat, AAMI 5-class standard).
@@ -197,7 +129,7 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 ## ✨ Features
 
 ### Landing Page & Auth
-- Public landing page with live ECG animation, feature highlights, and stats
+- Public landing page with live ECG animation, feature highlights, and stats strip
 - Login and Sign Up pages with a split-panel layout (ECG trace on the left, form on the right)
 - Auth is currently frontend-only (no backend session) — designed to be wired to a real auth provider
 
@@ -258,8 +190,6 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 | ML/DL | Scikit-learn, XGBoost, TensorFlow 2.16 (CPU) |
 | Image processing | OpenCV (CLAHE + adaptive threshold + weighted centroid) |
 | Containerization | Docker, Docker Compose, Nginx |
-| Model storage | AWS S3 |
-| Deployment | AWS EC2 (t3.medium) |
 
 ## API Endpoints
 
@@ -279,8 +209,6 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 ### Latest
 - Added **Landing Page** — ECG animation, feature cards, stats strip, CTA
 - Added **Login & Sign Up pages** — split-panel auth UI, frontend-only (no backend session yet)
-- Model files moved out of repo — now stored in **AWS S3** (`echovote-models` bucket) due to GitHub 100 MB limit
-- Added EC2 deployment guide with S3 model pull step
 - Renamed app from CardiaScan → **EchoVote**
 - **Photo upload:** original image is now displayed exactly as uploaded (no reconstruction artifacts)
 - **Sensitivity heatmap** overlaid directly on the real ECG image for photo uploads
