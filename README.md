@@ -161,6 +161,18 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 - **CSV / Manual:** heatmap is overlaid on the SVG signal chart
 - Color scale: blue (low impact) → amber → red (high impact)
 
+### PDF Export
+Click **⬇ Export PDF** in the results tab bar to download a clinical-style report. The PDF includes:
+- Colored header with report title and timestamp
+- Ensemble prediction, confidence, and agreement count
+- Stats row — models run, agreement %, consensus level, DL/ML split
+- Ensemble disease probability bars for all 5 classes
+- Per-model results table with prediction, confidence, and all 5 class probabilities
+- Clinical summary with final prediction and recommendation
+- Disclaimer footer
+
+File saves as `EchoVote_Report_YYYY-MM-DD.pdf`.
+
 ---
 
 ## 🧠 Models
@@ -185,7 +197,7 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18, SVG charts |
+| Frontend | React 18, SVG charts, jsPDF |
 | Backend | FastAPI, Python 3.10 |
 | ML/DL | Scikit-learn, XGBoost, TensorFlow 2.16 (CPU) |
 | Image processing | OpenCV (CLAHE + adaptive threshold + weighted centroid) |
@@ -207,8 +219,11 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 ## 📝 Changelog
 
 ### Latest
+- Added **PDF Export** — clinical-style report with ensemble verdict, per-model table, disease probabilities, and recommendation
 - Added **Landing Page** — ECG animation, feature cards, stats strip, CTA
 - Added **Login & Sign Up pages** — split-panel auth UI, frontend-only (no backend session yet)
+- Fixed DL model loading: patched Keras `quantization_config` version mismatch so all 3 deep learning models load correctly
+- Fixed image preprocessing: signal now aligned to MIT-BIH amplitude distribution for accurate predictions
 - Renamed app from CardiaScan → **EchoVote**
 - **Photo upload:** original image is now displayed exactly as uploaded (no reconstruction artifacts)
 - **Sensitivity heatmap** overlaid directly on the real ECG image for photo uploads
