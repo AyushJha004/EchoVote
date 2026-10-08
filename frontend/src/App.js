@@ -296,10 +296,6 @@ export default function App() {
             onChange={handleImage}
             style={{ display: "none" }}
           />
-          <div style={st.tipBox}>
-            💡 <strong>Mobile tip:</strong> Tap above and select "Camera" to
-            photograph ECG directly.
-          </div>
         </div>
       )}
 
@@ -1505,16 +1501,6 @@ const st = {
     fontWeight: 600,
     boxShadow: "var(--shadow-blue)",
     transition: "var(--t-fast)",
-  },
-  tipBox: {
-    background: "rgba(43,68,214,0.05)",
-    border: "1px solid var(--border-focus)",
-    borderRadius: "var(--r-md)",
-    padding: "14px 16px",
-    fontSize: 13,
-    color: "var(--text-secondary)",
-    marginTop: 16,
-    lineHeight: 1.6,
   },
   label: {
     fontSize: 13,
