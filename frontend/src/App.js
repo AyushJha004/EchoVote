@@ -1196,24 +1196,34 @@ export default function App() {
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         {[
           {
-            title: "🏥 Clinical AI",
+            title: "🏥 Project",
             content:
-              "Hybrid CNN-LSTM Architecture with Grad-CAM Explainability for ECG Arrhythmia Classification. Capstone research — BMSCE Bengaluru.",
+              "EchoVote is an AI-powered ECG arrhythmia classification tool built as a capstone research project at BMSCE Bengaluru. It uses an 8-model ensemble voting system — combining deep learning and classical machine learning — to classify single heartbeats into 5 AAMI standard classes.",
           },
           {
             title: "📊 Dataset",
             content:
-              "MIT-BIH Arrhythmia Database. 87,554 training samples. 5-class classification (AAMI standard).",
+              "MIT-BIH Arrhythmia Database. 87,554 training samples across 5 classes (N, S, V, F, Q). Class imbalance handled with SMOTE oversampling. Features are 187 amplitude samples per beat at 360 Hz.",
           },
           {
-            title: "🧠 Models",
+            title: "🧠 Ensemble Models",
             content:
-              "8-model ensemble: Random Forest, XGBoost, KNN, SVM, Logistic Regression, 1D-CNN, BiLSTM, CNN-LSTM.",
+              "3 Deep Learning: 1D-CNN (Conv1D → BatchNorm → MaxPool → Dense), BiLSTM (Bidirectional LSTM × 2), CNN-LSTM (Conv1D blocks → BiLSTM × 2). 5 Machine Learning: Random Forest (100 estimators), XGBoost, KNN, SVM, Logistic Regression. Final prediction is determined by majority vote across all 8 models.",
+          },
+          {
+            title: "🌡 Explainability",
+            content:
+              "Perturbation-based sensitivity heatmap: a 10-sample window is slid across the 187-point signal, each window is masked to zero, all 8 models are re-run, and the drop in ensemble confidence is recorded. High-drop regions are highlighted red — showing which ECG segments drove the prediction.",
+          },
+          {
+            title: "📷 Image Processing",
+            content:
+              "OpenCV pipeline: CLAHE contrast enhancement → adaptive Gaussian thresholding → morphological opening → per-column weighted centroid extraction. Signal is aligned to the MIT-BIH amplitude distribution (baseline ~0, QRS peak ~1) before prediction.",
           },
           {
             title: "⚙️ Stack",
             content:
-              "React · FastAPI · TensorFlow · Scikit-learn · Docker · OpenCV",
+              "Frontend: React 18, SVG charts · Backend: FastAPI, Python 3.10 · ML/DL: TensorFlow 2.16 (CPU), Scikit-learn, XGBoost · Image: OpenCV · Containerization: Docker, Docker Compose, Nginx",
           },
         ].map(({ title, content }) => (
           <div key={title} style={st.guideCard} className="card-hover">
