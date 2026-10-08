@@ -127,7 +127,8 @@ export default function ResultsPanel({ data }) {
 
   const exportPDF = () => {
     const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const W = 210, M = 18;
+    const W = 210,
+      M = 18;
     const col = sev.border;
     let y = 0;
 
@@ -143,29 +144,41 @@ export default function ResultsPanel({ data }) {
     doc.setFillColor(hr, hg, hb);
     doc.rect(0, 0, W, 22, "F");
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16); doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
     doc.text("EchoVote — ECG Analysis Report", M, 14);
-    doc.setFontSize(8); doc.setFont("helvetica", "normal");
-    doc.text(`Generated: ${new Date().toLocaleString()}`, W - M, 14, { align: "right" });
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated: ${new Date().toLocaleString()}`, W - M, 14, {
+      align: "right",
+    });
     y = 32;
 
     // ── Ensemble Verdict ────────────────────────────────────────────────
     doc.setTextColor(80, 80, 80);
-    doc.setFontSize(8); doc.setFont("helvetica", "bold");
-    doc.text("ENSEMBLE PREDICTION", M, y); y += 6;
-    doc.setFontSize(18); doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.text("ENSEMBLE PREDICTION", M, y);
+    y += 6;
+    doc.setFontSize(18);
+    doc.setFont("helvetica", "bold");
     doc.setTextColor(hr, hg, hb);
-    doc.text(consensus, M, y); y += 6;
-    doc.setFontSize(10); doc.setFont("helvetica", "normal");
+    doc.text(consensus, M, y);
+    y += 6;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
     doc.setTextColor(100, 100, 100);
     doc.text(
       `${counts[consensus]}/${valid.length} models agree  ·  ${(avgConf * 100).toFixed(1)}% avg confidence  ·  Ensemble prob: ${(ensProbs[topDiseaseIdx] * 100).toFixed(1)}%`,
-      M, y
-    ); y += 10;
+      M,
+      y,
+    );
+    y += 10;
 
     // ── Stats row ───────────────────────────────────────────────────────
     const agreePct = counts[consensus] / valid.length;
-    const consensusLevel = agreePct >= 0.875 ? "HIGH" : agreePct >= 0.625 ? "MODERATE" : "LOW";
+    const consensusLevel =
+      agreePct >= 0.875 ? "HIGH" : agreePct >= 0.625 ? "MODERATE" : "LOW";
     const stats = [
       ["Models Run", `${valid.length}/8`],
       ["Agreement", `${(agreePct * 100).toFixed(0)}%`],
@@ -177,21 +190,29 @@ export default function ResultsPanel({ data }) {
     doc.rect(M, y, W - M * 2, 16, "F");
     stats.forEach(([label, val], i) => {
       const x = M + i * cellW + cellW / 2;
-      doc.setFontSize(13); doc.setFont("helvetica", "bold"); doc.setTextColor(hr, hg, hb);
+      doc.setFontSize(13);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(hr, hg, hb);
       doc.text(val, x, y + 7, { align: "center" });
-      doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(140, 140, 140);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(140, 140, 140);
       doc.text(label.toUpperCase(), x, y + 13, { align: "center" });
     });
     y += 22;
 
     // ── Ensemble Disease Probabilities ──────────────────────────────────
-    doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(60, 60, 60);
-    doc.text("ENSEMBLE DISEASE PROBABILITIES", M, y); y += 5;
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(60, 60, 60);
+    doc.text("ENSEMBLE DISEASE PROBABILITIES", M, y);
+    y += 5;
     const barW = W - M * 2 - 50;
     CLASSES.forEach((cls, i) => {
-      const pct = (ensProbs[i] || 0);
+      const pct = ensProbs[i] || 0;
       const [cr, cg, cb] = hex2rgb(COLOR[cls]);
-      doc.setFontSize(8); doc.setFont("helvetica", i === topDiseaseIdx ? "bold" : "normal");
+      doc.setFontSize(8);
+      doc.setFont("helvetica", i === topDiseaseIdx ? "bold" : "normal");
       doc.setTextColor(cr, cg, cb);
       doc.text(cls, M, y + 3.5);
       doc.setFillColor(230, 232, 240);
@@ -205,28 +226,72 @@ export default function ResultsPanel({ data }) {
     y += 4;
 
     // ── Per-Model Results Table ──────────────────────────────────────────
-    doc.setFontSize(9); doc.setFont("helvetica", "bold"); doc.setTextColor(60, 60, 60);
-    doc.text("PER-MODEL RESULTS", M, y); y += 5;
-    const cols = ["Model", "Type", "Prediction", "Confidence", "N", "S", "V", "F", "Q"];
-    const colX = [M, M+32, M+50, M+82, M+108, M+118, M+128, M+138, M+148];
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(60, 60, 60);
+    doc.text("PER-MODEL RESULTS", M, y);
+    y += 5;
+    const cols = [
+      "Model",
+      "Type",
+      "Prediction",
+      "Confidence",
+      "N",
+      "S",
+      "V",
+      "F",
+      "Q",
+    ];
+    const colX = [
+      M,
+      M + 32,
+      M + 50,
+      M + 82,
+      M + 108,
+      M + 118,
+      M + 128,
+      M + 138,
+      M + 148,
+    ];
     doc.setFillColor(hr, hg, hb);
     doc.rect(M, y, W - M * 2, 7, "F");
-    doc.setTextColor(255, 255, 255); doc.setFontSize(7); doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
     cols.forEach((c, i) => doc.text(c, colX[i], y + 4.5));
     y += 7;
     valid.forEach(([name, pred], idx) => {
-      if (idx % 2 === 0) { doc.setFillColor(248, 249, 252); doc.rect(M, y, W - M * 2, 7, "F"); }
+      if (idx % 2 === 0) {
+        doc.setFillColor(248, 249, 252);
+        doc.rect(M, y, W - M * 2, 7, "F");
+      }
       const [pr, pg, pb] = hex2rgb(COLOR[pred.prediction] || "#8a8c9c");
-      doc.setTextColor(60, 60, 60); doc.setFontSize(7); doc.setFont("helvetica", "normal");
+      doc.setTextColor(60, 60, 60);
+      doc.setFontSize(7);
+      doc.setFont("helvetica", "normal");
       doc.text(name, colX[0], y + 4.5);
-      doc.setTextColor(DL_NAMES.has(name) ? 107 : 44, DL_NAMES.has(name) ? 127 : 194, DL_NAMES.has(name) ? 255 : 138);
+      doc.setTextColor(
+        DL_NAMES.has(name) ? 107 : 44,
+        DL_NAMES.has(name) ? 127 : 194,
+        DL_NAMES.has(name) ? 255 : 138,
+      );
       doc.text(DL_NAMES.has(name) ? "DL" : "ML", colX[1], y + 4.5);
-      doc.setTextColor(pr, pg, pb); doc.setFont("helvetica", "bold");
+      doc.setTextColor(pr, pg, pb);
+      doc.setFont("helvetica", "bold");
       doc.text(pred.prediction?.split(" ")[0] || "-", colX[2], y + 4.5);
-      doc.setTextColor(60, 60, 60); doc.setFont("helvetica", "normal");
-      doc.text(`${((pred.confidence || 0) * 100).toFixed(1)}%`, colX[3], y + 4.5);
-      (pred.probs || [0,0,0,0,0]).forEach((p, pi) => {
-        doc.setTextColor(pred.class_idx === pi ? pr : 120, pred.class_idx === pi ? pg : 120, pred.class_idx === pi ? pb : 120);
+      doc.setTextColor(60, 60, 60);
+      doc.setFont("helvetica", "normal");
+      doc.text(
+        `${((pred.confidence || 0) * 100).toFixed(1)}%`,
+        colX[3],
+        y + 4.5,
+      );
+      (pred.probs || [0, 0, 0, 0, 0]).forEach((p, pi) => {
+        doc.setTextColor(
+          pred.class_idx === pi ? pr : 120,
+          pred.class_idx === pi ? pg : 120,
+          pred.class_idx === pi ? pb : 120,
+        );
         doc.setFont("helvetica", pred.class_idx === pi ? "bold" : "normal");
         doc.text(`${(p * 100).toFixed(0)}%`, colX[4 + pi], y + 4.5);
       });
@@ -235,41 +300,68 @@ export default function ResultsPanel({ data }) {
     y += 6;
 
     // ── Clinical Summary ─────────────────────────────────────────────────
-    if (y > 240) { doc.addPage(); y = 20; }
+    if (y > 240) {
+      doc.addPage();
+      y = 20;
+    }
     doc.setFillColor(hr, hg, hb);
     doc.rect(M, y, W - M * 2, 8, "F");
-    doc.setTextColor(255, 255, 255); doc.setFontSize(9); doc.setFont("helvetica", "bold");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "bold");
     doc.text("CLINICAL SUMMARY", M + 4, y + 5.5);
     y += 12;
 
     const recMap = {
-      "Ventricular (V)": "Urgent clinical review required. Ventricular arrhythmia detected — consult a cardiologist immediately.",
-      "Normal (N)": consensusLevel === "HIGH" ? "High-confidence normal sinus rhythm. Routine follow-up as per clinical protocol." : "Normal sinus rhythm detected. Moderate model agreement — routine follow-up recommended.",
-      "Supraventricular (S)": "Cardiology referral recommended. Consider Holter monitoring and rate control evaluation.",
-      "Fusion (F)": "Fusion beat detected. Clinical review recommended to assess underlying rhythm.",
-      "Unclassifiable (Q)": "Unclassifiable morphology. Manual review by a qualified cardiologist is required.",
+      "Ventricular (V)":
+        "Urgent clinical review required. Ventricular arrhythmia detected — consult a cardiologist immediately.",
+      "Normal (N)":
+        consensusLevel === "HIGH"
+          ? "High-confidence normal sinus rhythm. Routine follow-up as per clinical protocol."
+          : "Normal sinus rhythm detected. Moderate model agreement — routine follow-up recommended.",
+      "Supraventricular (S)":
+        "Cardiology referral recommended. Consider Holter monitoring and rate control evaluation.",
+      "Fusion (F)":
+        "Fusion beat detected. Clinical review recommended to assess underlying rhythm.",
+      "Unclassifiable (Q)":
+        "Unclassifiable morphology. Manual review by a qualified cardiologist is required.",
     };
     const rec = recMap[consensus] || "Clinical review advised.";
-    doc.setTextColor(hr, hg, hb); doc.setFontSize(8); doc.setFont("helvetica", "bold");
+    doc.setTextColor(hr, hg, hb);
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
     doc.text("Final Prediction:", M, y);
-    doc.setFont("helvetica", "normal"); doc.setTextColor(60, 60, 60);
-    doc.text(`${consensus}  —  ${(avgConf * 100).toFixed(1)}% avg confidence`, M + 30, y); y += 7;
-    doc.setTextColor(hr, hg, hb); doc.setFont("helvetica", "bold");
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(60, 60, 60);
+    doc.text(
+      `${consensus}  —  ${(avgConf * 100).toFixed(1)}% avg confidence`,
+      M + 30,
+      y,
+    );
+    y += 7;
+    doc.setTextColor(hr, hg, hb);
+    doc.setFont("helvetica", "bold");
     doc.text("Recommendation:", M, y);
-    doc.setFont("helvetica", "normal"); doc.setTextColor(60, 60, 60);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(60, 60, 60);
     const recLines = doc.splitTextToSize(rec, W - M * 2 - 32);
-    doc.text(recLines, M + 32, y); y += recLines.length * 5 + 6;
+    doc.text(recLines, M + 32, y);
+    y += recLines.length * 5 + 6;
 
     // ── Disclaimer ───────────────────────────────────────────────────────
     doc.setFillColor(245, 246, 250);
     doc.rect(M, y, W - M * 2, 10, "F");
-    doc.setFontSize(7); doc.setFont("helvetica", "italic"); doc.setTextColor(150, 150, 150);
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(150, 150, 150);
     doc.text(
       "Research tool only · Not FDA-approved · Not a medical device · Always consult a qualified cardiologist before clinical decisions.",
-      W / 2, y + 6, { align: "center" }
+      W / 2,
+      y + 6,
+      { align: "center" },
     );
 
-    doc.save(`EchoVote_Report_${new Date().toISOString().slice(0,10)}.pdf`);
+    doc.save(`EchoVote_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const tabs = ["overview", "disease-chance", "all-models"];
@@ -323,12 +415,20 @@ export default function ResultsPanel({ data }) {
             <div style={s.card} className="card-hover">
               <div style={s.cardHead}>
                 <span style={s.cardTitle}>Uploaded ECG Image</span>
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Original · unmodified</span>
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  Original · unmodified
+                </span>
               </div>
               <img
                 src={source_image}
                 alt="Uploaded ECG"
-                style={{ width: "100%", borderRadius: "var(--r-md)", display: "block", maxHeight: 220, objectFit: "contain" }}
+                style={{
+                  width: "100%",
+                  borderRadius: "var(--r-md)",
+                  display: "block",
+                  maxHeight: 220,
+                  objectFit: "contain",
+                }}
               />
             </div>
           )}
