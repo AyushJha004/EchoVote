@@ -96,6 +96,12 @@ The health response should show `"models_loaded":8` and `"demo_mode":false`. Aft
 docker start echovote-backend echovote-frontend
 ```
 
+If you are restarting the containers from the earlier port-3001 launch in this repository, their names are `echovote-backend-live` and `ecg-app-frontend-1`. Start those existing containers instead:
+
+```powershell
+docker start echovote-backend-live ecg-app-frontend-1
+```
+
 If the page opens but says **Offline**, wait for model loading and check `docker logs --tail 100 echovote-backend`. If the frontend started before the backend was available, restart it after the backend is healthy:
 
 ```powershell
