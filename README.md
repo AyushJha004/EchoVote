@@ -39,36 +39,22 @@ docker build -t ecg-app-backend:latest -f Dockerfile .
 docker build -t ecg-app-frontend:latest -f frontend/Dockerfile.frontend frontend/
 ```
 
-### 4. Start the app
-```bash
-docker-compose up -d
-```
+### 4. Start the app (Windows)
 
-### 5. Open the app
-Visit: **http://localhost:3000**
-
-> The backend takes ~2–3 minutes on first start to load all 8 models (TensorFlow initialization).  
-> The sidebar shows **"Live"** once all models are ready. If it shows "Offline", wait a moment and refresh.
-
-### Windows: use alternate ports when Grafana uses port 3000
-
-The default Compose setup uses host ports **3000** (frontend) and **8000** (backend). If another application such as Grafana already uses either port, use the runtime setup below instead. It keeps Grafana on port 3000, serves EchoVote at **http://localhost:3001**, and exposes the backend at port 8001. Run these commands in **PowerShell from the repository root**.
-
-Build the images as described above if they do not exist yet. Make sure the trained model files are in `models/`, then start Docker Desktop after a system restart:
+Run these commands in **PowerShell from the repository root**. Make sure Docker Desktop is running and the model files are in `models/`.
 
 ```powershell
 docker desktop start
 docker info
 ```
 
-Create a dedicated Docker network once, then start the backend and frontend. The backend mounts the repository's `models/` directory. The frontend serves API calls through Nginx, so the browser does not try to contact the conflicting default backend port directly.
+For the first launch, create the Docker network and start the backend and frontend:
 
 ```powershell
-docker network inspect echovote-runtime *> $null
-if ($LASTEXITCODE -ne 0) { docker network create echovote-runtime }
+docker network create echovote-runtime
 
 docker run -d --init --restart unless-stopped `
-  --name echovote-backend `
+  --name echovote-backend-live `
   --network echovote-runtime --network-alias backend `
   -p 8001:8000 `
   -v "${PWD}\models:/app/models" `
@@ -76,60 +62,39 @@ docker run -d --init --restart unless-stopped `
   ecg-app-backend:latest
 
 docker run -d --restart unless-stopped `
-  --name echovote-frontend `
+  --name ecg-app-frontend-1 `
   --network echovote-runtime `
   -p 3001:80 `
   --entrypoint /bin/sh ecg-app-frontend:latest `
   -c "sed -i 's#http://localhost:8000##g' /usr/share/nginx/html/static/js/*.js; exec nginx -g 'daemon off;'"
 ```
 
-Open **http://localhost:3001** in Chrome. Wait for the TensorFlow models to load, then verify the frontend's proxied health endpoint:
+Open **http://localhost:3001** in Chrome. Wait for the models to load, then check that all 8 are ready:
 
 ```powershell
 curl.exe http://localhost:3001/api/health
-docker ps --filter name=echovote
 ```
 
-The health response should show `"models_loaded":8` and `"demo_mode":false`. After a system restart, Docker Desktop's restart policy should bring both containers back automatically. If they are stopped, start them without creating new containers:
-
-```powershell
-docker start echovote-backend echovote-frontend
-```
-
-If you are restarting the containers from the earlier port-3001 launch in this repository, their names are `echovote-backend-live` and `ecg-app-frontend-1`. Start those existing containers instead:
+The response should show `"models_loaded":8` and `"demo_mode":false`. After a system restart, start the existing containers:
 
 ```powershell
 docker start echovote-backend-live ecg-app-frontend-1
 ```
 
-If the page opens but says **Offline**, wait for model loading and check `docker logs --tail 100 echovote-backend`. If the frontend started before the backend was available, restart it after the backend is healthy:
+If the app says **Offline**, wait for model loading and check the backend logs. Once the backend is healthy, restart the frontend if needed:
 
 ```powershell
-docker restart echovote-frontend
+docker logs --tail 100 echovote-backend-live
+docker restart ecg-app-frontend-1
 ```
-
-Do not use `docker compose up` for this alternate-port setup: Compose uses the default host ports 3000 and 8000 and the prebuilt image tags, so it does not rebuild the images or apply the alternate port/proxy configuration above. If the named `echovote-backend` or `echovote-frontend` containers already exist, use `docker start`/`docker restart` rather than running the `docker run` commands again.
 
 ---
 
 ## 🔄 Stopping & Restarting
 
-```bash
-# Stop
-docker-compose down
-
-# Start again (no rebuild needed)
-docker-compose up -d
-
-# Rebuild frontend after code changes
-docker build -t ecg-app-frontend:latest -f frontend/Dockerfile.frontend frontend/
-docker-compose up -d
-
-# Check status
-docker ps
-
-# View backend logs
-docker logs ecg-app-backend-1
+```powershell
+docker stop ecg-app-frontend-1 echovote-backend-live
+docker start echovote-backend-live ecg-app-frontend-1
 ```
 
 ---
