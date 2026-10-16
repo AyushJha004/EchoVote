@@ -5,7 +5,7 @@ import ResultsPanel from "./ResultsPanel";
 import LandingPage from "./LandingPage";
 import { LoginPage, SignupPage } from "./AuthPages";
 
-const API = process.env.REACT_APP_API_BASE || "http://localhost:8000";
+const API = process.env.REACT_APP_API_BASE || "";
 
 const NAV = [
   { id: "upload", icon: "📤", label: "Analyze" },
@@ -31,13 +31,37 @@ export default function App() {
   const imgRef = useRef(null);
 
   useEffect(() => {
-    fetch(`${API}/api/health`)
-      .then((r) => r.json())
-      .then((d) => {
+    let active = true;
+    let retryTimer;
+    let requestTimer;
+
+    const checkHealth = async () => {
+      const controller = new AbortController();
+      requestTimer = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await fetch(`${API}/api/health`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`Health check failed: ${response.status}`);
+        const data = await response.json();
+        if (!active) return;
         setServerOk(true);
-        setDemoMode(d.demo_mode);
-      })
-      .catch(() => setServerOk(false));
+        setDemoMode(data.demo_mode);
+      } catch {
+        if (active) setServerOk(false);
+      } finally {
+        clearTimeout(requestTimer);
+        if (active) retryTimer = setTimeout(checkHealth, 5000);
+      }
+    };
+
+    checkHealth();
+    return () => {
+      active = false;
+      clearTimeout(retryTimer);
+      clearTimeout(requestTimer);
+    };
   }, []);
 
   const post = async (url, body, isForm = false) => {
@@ -159,6 +183,7 @@ export default function App() {
 
   const Sidebar = () => (
     <aside
+      className="app-sidebar"
       style={{
         ...st.sidebar,
         width: sidebarOpen ? 240 : 70,
@@ -166,10 +191,10 @@ export default function App() {
       }}
     >
       <div style={st.logo} onClick={() => setSidebarOpen((o) => !o)}>
-        <div style={st.logoIcon}>❤️</div>
-        {sidebarOpen && <span style={st.logoText}>EchoVote</span>}
+        <div style={st.logoIcon} className="app-logo-icon">❤️</div>
+        {sidebarOpen && <span style={st.logoText} className="app-logo-text">EchoVote</span>}
       </div>
-      <nav style={st.nav}>
+      <nav style={st.nav} className="app-nav">
         {NAV.map(({ id, icon, label }) => (
           <button
             key={id}
@@ -184,7 +209,7 @@ export default function App() {
       </nav>
 
       {/* ── Profile + Logout ── */}
-      <div style={st.profileSection}>
+      <div style={st.profileSection} className="app-profile-section">
         <div style={st.profileChip}>
           <div style={st.avatar}>{initials}</div>
           {sidebarOpen && (
@@ -206,7 +231,7 @@ export default function App() {
         )}
       </div>
 
-      <div style={st.statusBar}>
+      <div style={st.statusBar} className="app-status-bar">
         <div
           style={{
             ...st.statusDot,
@@ -234,8 +259,8 @@ export default function App() {
   );
 
   const UploadPanel = () => (
-    <div style={st.uploadPanel}>
-      <div style={st.inputTabs}>
+    <div style={st.uploadPanel} className="analysis-input-panel">
+      <div style={st.inputTabs} className="analysis-input-tabs">
         {[
           { id: "csv", label: "📄 CSV" },
           { id: "image", label: "📷 Photo" },
@@ -258,9 +283,9 @@ export default function App() {
       {inputTab === "csv" && (
         <div>
           <div
+            className="drop-zone analysis-input-content analysis-input-content--file"
             style={st.dropZone}
             onClick={() => csvRef.current?.click()}
-            className="drop-zone"
           >
             <div style={st.dropIcon}>📄</div>
             <div style={st.dropTitle}>Upload CSV File</div>
@@ -280,9 +305,9 @@ export default function App() {
       {inputTab === "image" && (
         <div>
           <div
+            className="drop-zone analysis-input-content analysis-input-content--file"
             style={st.dropZone}
             onClick={() => imgRef.current?.click()}
-            className="drop-zone"
           >
             <div style={st.dropIcon}>📷</div>
             <div style={st.dropTitle}>Upload ECG Photo</div>
@@ -300,12 +325,13 @@ export default function App() {
       )}
 
       {inputTab === "manual" && (
-        <div>
+        <div className="analysis-input-content analysis-input-content--manual">
           <label style={st.label}>
             Paste 187 values (comma, tab, or space separated)
           </label>
           <textarea
             style={st.textarea}
+            className="analysis-manual-textarea"
             rows={6}
             placeholder="Comma, tab, or space separated — e.g. 9.60E-01  8.63E-01  4.62E-01 ..."
             value={manualText}
@@ -323,7 +349,7 @@ export default function App() {
           </div>
           <button
             style={st.btn}
-            className="btn-primary"
+            className="btn-primary analysis-submit"
             onClick={handleManual}
             disabled={loading}
           >
@@ -333,7 +359,7 @@ export default function App() {
       )}
 
       {inputTab === "sample" && (
-        <div style={st.samplePanel}>
+        <div style={st.samplePanel} className="analysis-input-content analysis-sample-panel">
           <div style={st.sampleIcon}>🧪</div>
           <div style={st.sampleTitle}>Synthetic ECG Samples</div>
           <div style={st.sampleSub}>
@@ -409,7 +435,7 @@ export default function App() {
       )}
 
       {error && (
-        <div style={st.errorBox} className="anim-fadeUp">
+        <div style={st.errorBox} className="analysis-feedback anim-fadeUp">
           <strong>⚠️ Error:</strong> {error}
           {serverOk === false && (
             <div style={{ marginTop: 8, fontSize: 12 }}>
@@ -420,7 +446,7 @@ export default function App() {
       )}
 
       {loading && (
-        <div style={st.loadingBox} className="anim-fadeUp">
+        <div style={st.loadingBox} className="analysis-feedback anim-fadeUp">
           <div style={st.spinner} />
           <span>Analyzing with AI ensemble...</span>
         </div>
@@ -1253,7 +1279,7 @@ export default function App() {
     return <SignupPage onSignup={handleLogin} onLogin={() => setAuthPage("login")} onLogoClick={() => setAuthPage("landing")} />;
 
   return (
-    <div style={st.app}>
+    <div style={st.app} className="app">
       <Sidebar />
       <main style={st.main}>
         <div style={st.topBar} className="app-ecg-grid">
@@ -1277,17 +1303,20 @@ export default function App() {
           </div>
         </div>
 
-        <div style={st.content}>
+        <div style={st.content} className="app-content">
           {page === "upload" && (
-            <div style={st.split}>
-              <div style={{ flex: results ? "0 0 360px" : 1, minWidth: 0 }}>
-                {results && <div style={st.miniUploadTitle}>New Analysis</div>}
-                <UploadPanel />
-              </div>
-              {results && (
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <ResultsPanel data={results} demoMode={demoMode} />
+            <div className={`analysis-workspace${results ? " has-results" : ""}`}>
+              <section className="analysis-input-card">
+                <div className="analysis-input-heading">
+                  <h2>Select ECG Input</h2>
+                  <p>Upload a file, take a photo, paste values, or use a sample ECG signal.</p>
                 </div>
+                <UploadPanel />
+              </section>
+              {results && (
+                <section className="analysis-results-section">
+                  <ResultsPanel data={results} demoMode={demoMode} />
+                </section>
               )}
             </div>
           )}

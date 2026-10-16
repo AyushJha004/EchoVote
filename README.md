@@ -5,97 +5,43 @@
 
 ---
 
-## 🚀 Quick Start (Docker — Recommended)
+## Quick Start (Docker)
 
-### Prerequisites
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+1. Install and start [Docker Desktop](https://www.docker.com/products/docker-desktop/).
+2. Clone the repository and open PowerShell in its folder:
+   ```powershell
+   git clone https://github.com/AyushJha004/EchoVote.git
+   cd EchoVote
+   ```
+3. Put the trained model files in `models/` (or leave it empty to use Demo Mode).
+4. Build the images and start the app:
+   ```powershell
+   docker compose up -d --build
+   ```
+5. Open **http://localhost:3001**. Check model status at **http://localhost:3001/api/health**; with trained models loaded, the response lists all 8 models and `"demo_mode":false`.
 
-### 1. Clone the repository
-```bash
-git clone https://github.com/AyushJha004/EchoVote.git
-cd EchoVote
-```
+### After a system restart
 
-### 2. Add your trained models
-Place model files in the `models/` folder:
-```
-models/
-├── ecg_1d_cnn.keras       ← 1D-CNN (TensorFlow)
-├── ecg_bilstm.keras       ← BiLSTM (TensorFlow)
-├── ecg_cnn_lstm.keras     ← CNN-LSTM (TensorFlow)
-├── ecg_rf.pkl             ← Random Forest
-├── ecg_xgb.pkl            ← XGBoost
-├── ecg_knn.pkl            ← KNN
-├── ecg_svm.pkl            ← SVM
-├── ecg_lr.pkl             ← Logistic Regression
-└── ecg_scaler.pkl         ← StandardScaler
-```
-
-> **No models?** The app runs in **Demo Mode** automatically — predictions are simulated so you can explore the full UI.
-
-### 3. Build Docker images
-```bash
-docker build -t ecg-app-backend:latest -f Dockerfile .
-docker build -t ecg-app-frontend:latest -f frontend/Dockerfile.frontend frontend/
-```
-
-### 4. Start the app (Windows)
-
-Run these commands in **PowerShell from the repository root**. Make sure Docker Desktop is running and the model files are in `models/`.
+Start Docker Desktop, open PowerShell in the repository folder, then run:
 
 ```powershell
-docker desktop start
-docker info
+docker compose up -d
 ```
 
-For the first launch, create the Docker network and start the backend and frontend:
+The containers are configured to restart automatically when Docker starts. Model initialization can take a few minutes. To check backend startup:
 
 ```powershell
-docker network create echovote-runtime
-
-docker run -d --init --restart unless-stopped `
-  --name echovote-backend-live `
-  --network echovote-runtime --network-alias backend `
-  -p 8001:8000 `
-  -v "${PWD}\models:/app/models" `
-  -e PYTHONUNBUFFERED=1 `
-  ecg-app-backend:latest
-
-docker run -d --restart unless-stopped `
-  --name ecg-app-frontend-1 `
-  --network echovote-runtime `
-  -p 3001:80 `
-  --entrypoint /bin/sh ecg-app-frontend:latest `
-  -c "sed -i 's#http://localhost:8000##g' /usr/share/nginx/html/static/js/*.js; exec nginx -g 'daemon off;'"
+docker compose logs --tail 100 backend
 ```
 
-Open **http://localhost:3001** in Chrome. Wait for the models to load, then check that all 8 are ready:
+### Stop or update
 
 ```powershell
-curl.exe http://localhost:3001/api/health
+docker compose stop
+docker compose up -d --build
 ```
 
-The response should show `"models_loaded":8` and `"demo_mode":false`. After a system restart, start the existing containers:
-
-```powershell
-docker start echovote-backend-live ecg-app-frontend-1
-```
-
-If the app says **Offline**, wait for model loading and check the backend logs. Once the backend is healthy, restart the frontend if needed:
-
-```powershell
-docker logs --tail 100 echovote-backend-live
-docker restart ecg-app-frontend-1
-```
-
----
-
-## 🔄 Stopping & Restarting
-
-```powershell
-docker stop ecg-app-frontend-1 echovote-backend-live
-docker start echovote-backend-live ecg-app-frontend-1
-```
+`docker compose stop` preserves the containers for the next start. `docker compose down` removes them.
 
 ---
 
@@ -119,14 +65,15 @@ python main.py
 ```
 
 ### Frontend
-```bash
+```powershell
 cd frontend
 npm install
-set REACT_APP_API_BASE=http://localhost:8000   # Windows
-# export REACT_APP_API_BASE=http://localhost:8000  # Mac/Linux
+$env:REACT_APP_API_BASE = "http://localhost:8000"
 npm start
 # Runs on http://localhost:3000
 ```
+
+For Mac/Linux, set `REACT_APP_API_BASE=http://localhost:8000` before running `npm start`.
 
 ---
 

@@ -374,7 +374,7 @@ export default function ResultsPanel({ data }) {
   return (
     <div style={s.wrap} className="anim-fadeUp">
       {/* ── Tab bar ── */}
-      <div style={s.tabBar}>
+      <div style={s.tabBar} className="results-tabs">
         {tabs.map((t) => (
           <button
             key={t}
@@ -409,10 +409,10 @@ export default function ResultsPanel({ data }) {
 
       {/* ── OVERVIEW ── */}
       {tab === "overview" && (
-        <div style={s.col}>
+        <div style={s.col} className="results-overview">
           {/* Real image preview for photo uploads */}
           {source_image && (
-            <div style={s.card} className="card-hover">
+            <div style={s.card} className="card-hover results-photo-preview">
               <div style={s.cardHead}>
                 <span style={s.cardTitle}>Uploaded ECG Image</span>
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -439,7 +439,7 @@ export default function ResultsPanel({ data }) {
               background: sev.bg,
               borderColor: sev.border,
             }}
-            className="card-hover"
+            className="card-hover results-verdict"
           >
             <div style={{ ...s.verdictIcon, background: sev.border }}>
               {ICON[consensus]}
@@ -473,7 +473,7 @@ export default function ResultsPanel({ data }) {
           </div>
 
           {/* ── Sensitivity / Heatmap ── */}
-          <div style={s.card} className="card-hover">
+          <div style={s.card} className="card-hover results-heatmap">
             <div style={s.cardHead}>
               <span style={s.cardTitle}>Sensitivity Heatmap</span>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -681,7 +681,7 @@ export default function ResultsPanel({ data }) {
           </div>
 
           {/* ── DL vs ML inline ── */}
-          <div style={s.card} className="card-hover">
+          <div style={s.card} className="card-hover results-model-compare">
             <div style={s.cardHead}>
               <span style={s.cardTitle}>DL vs ML</span>
               {dlPreds.length > 0 &&
@@ -875,7 +875,45 @@ export default function ResultsPanel({ data }) {
           </div>
 
           {/* Stats row */}
-          <div style={s.statsRow}>
+          <div style={s.card} className="results-model-preview">
+            <div className="results-model-preview-heading">
+              <span style={s.cardTitle}>Model Predictions</span>
+              <button
+                type="button"
+                className="results-view-models"
+                onClick={() => setTab("all-models")}
+              >
+                View all models →
+              </button>
+            </div>
+            <div className="results-model-preview-list">
+              {valid.map(([name, pred]) => {
+                const color = COLOR[pred.prediction] || "var(--text-muted)";
+                return (
+                  <div className="results-model-preview-row" key={name}>
+                    <span
+                      className="results-model-preview-class"
+                      style={{ color, background: `${color}22` }}
+                    >
+                      {pred.prediction?.match(/\((.)\)/)?.[1] || "?"}
+                    </span>
+                    <span className="results-model-preview-name">{name}</span>
+                    <span className="results-model-preview-bar">
+                      <span
+                        style={{
+                          width: `${Math.min((pred.confidence || 0) * 100, 100)}%`,
+                          background: color,
+                        }}
+                      />
+                    </span>
+                    <strong>{((pred.confidence || 0) * 100).toFixed(0)}%</strong>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={s.statsRow} className="results-stats">
             {[
               { v: valid.length, l: "Models Run" },
               { v: (avgConf * 100).toFixed(0) + "%", l: "Avg Confidence" },
@@ -1250,6 +1288,7 @@ export default function ResultsPanel({ data }) {
               borderRadius: "var(--r-lg)",
               overflow: "hidden",
             }}
+            className="results-clinical-summary"
           >
             {/* Header bar */}
             <div
