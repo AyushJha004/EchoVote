@@ -34,6 +34,9 @@ The containers are configured to restart automatically when Docker starts. Model
 docker compose logs --tail 100 backend
 ```
 
+For a detailed Windows and VS Code terminal walkthrough, see
+[RUN_AFTER_RESTART.md](./RUN_AFTER_RESTART.md).
+
 ### Stop or update
 
 ```powershell
@@ -42,6 +45,7 @@ docker compose up -d --build
 ```
 
 `docker compose stop` preserves the containers for the next start. `docker compose down` removes them.
+The named `user_data` volume is retained by `docker compose down`; remove it only if you intend to permanently delete all registered accounts.
 
 ---
 
@@ -103,7 +107,11 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 ### Landing Page & Auth
 - Public landing page with live ECG animation, feature highlights, and stats strip
 - Login and Sign Up pages with a split-panel layout (ECG trace on the left, form on the right)
-- Auth is currently frontend-only (no backend session) — designed to be wired to a real auth provider
+- FastAPI authentication API for account registration and login by username or email
+- Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes (260,000 iterations); plaintext passwords are not stored
+- SQLite user database is stored in Docker's persistent `user_data` volume at `/app/data/users.db`
+- Password changes require the current password; this is not a forgotten-password recovery flow
+- Login is UI-level only: authenticated state is held in the frontend and is not backed by server sessions or protected API routes
 
 ### Input Methods
 | Tab | Description |
@@ -185,15 +193,27 @@ File saves as `EchoVote_Report_YYYY-MM-DD.pdf`.
 | POST | `/api/predict/manual` | JSON `{values: [...187 floats]}` |
 | POST | `/api/perturbation` | Sensitivity heatmap computation |
 | GET | `/api/clinical-info` | Clinical info for each arrhythmia class |
+| POST | `/auth/register` | Create an account |
+| POST | `/auth/login` | Authenticate by username or email |
+| POST | `/auth/reset-password` | Change password after verifying the current password |
+
+The frontend Nginx proxy forwards both `/api/*` and `/auth/*` requests to FastAPI.
+The backend reads the database path from `ECHOVOTE_DB_PATH`; Docker Compose sets it
+to `/app/data/users.db` and mounts the persistent `user_data` volume at `/app/data`.
+Rebuilding or recreating containers does not remove this named volume. Do not run
+`docker compose down -v` unless you intend to delete all registered users.
 
 ---
 
 ## 📝 Changelog
 
 ### Latest
+- Added backend-backed signup, login, and password changes using SQLite and salted PBKDF2 password hashes
+- Persisted account data in a Docker Compose volume and routed authentication requests through Nginx
+- Added a Windows/VS Code terminal guide for starting EchoVote after a laptop restart
 - Added **PDF Export** — clinical-style report with ensemble verdict, per-model table, disease probabilities, and recommendation
 - Added **Landing Page** — ECG animation, feature cards, stats strip, CTA
-- Added **Login & Sign Up pages** — split-panel auth UI, frontend-only (no backend session yet)
+- Added **Login & Sign Up pages** — split-panel auth UI
 - Fixed DL model loading: patched Keras `quantization_config` version mismatch so all 3 deep learning models load correctly
 - Fixed image preprocessing: signal now aligned to MIT-BIH amplitude distribution for accurate predictions
 - Renamed app from CardiaScan → **EchoVote**

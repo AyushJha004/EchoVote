@@ -41,6 +41,11 @@ curl.exe http://localhost:3001/api/health
 ```
 
 With trained models available, the response reports `"models_loaded":8` and `"demo_mode":false`.
+Authentication accounts are stored in SQLite at `/app/data/users.db` inside the backend container. Docker Compose mounts the named `user_data` volume at `/app/data`, so accounts persist when containers are rebuilt or recreated.
+
+Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes (260,000 iterations), not as plaintext. The `/auth/register` and `/auth/login` endpoints support account creation and login by username or email. The password-change endpoint requires the current password; it does not provide forgotten-password recovery. The frontend Nginx proxy forwards both `/api/*` and `/auth/*` to FastAPI.
+
+> **Keep account data:** `docker compose down` removes containers but keeps the named volume. Do not run `docker compose down -v` unless you intend to permanently delete all accounts.
 
 ### Step 3 — Open App
 
@@ -52,7 +57,7 @@ Visit: **http://localhost:3001**
 
 - **Backend**: http://localhost:8001 (FastAPI)
 - **Frontend**: http://localhost:3001 (React + Nginx)
-- **API Proxy**: `/api/*` routes to backend
+- **API Proxy**: `/api/*` and `/auth/*` route to backend
 
 ---
 
@@ -86,6 +91,11 @@ docker compose up -d --build
 docker compose ps
 docker compose logs --tail 100 backend
 ```
+
+**Authentication accounts missing after a restart:**
+- Confirm Compose still declares the `user_data:/app/data` volume with `docker compose config`.
+- Avoid `docker compose down -v`, which deletes named volumes including the account database.
+- Account data is local to this Docker installation and is not automatically synced or backed up.
 
 ---
 

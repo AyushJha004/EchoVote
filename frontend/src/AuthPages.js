@@ -194,7 +194,7 @@ export function LoginPage({ onLogin, onSignup, onLogoClick }) {
             style={s.forgotLink}
             onClick={() => setShowReset(true)}
           >
-            Forgot password?
+            Change password
           </button>
         </div>
 
@@ -321,6 +321,7 @@ export function SignupPage({ onSignup, onLogin, onLogoClick }) {
 
 function ResetPasswordPage({ onBack, onLogoClick }) {
   const [identifier, setIdentifier] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -345,11 +346,15 @@ function ResetPasswordPage({ onBack, onLogoClick }) {
       const res = await fetch(`${API}/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ identifier, new_password: newPassword }),
+        body: JSON.stringify({
+          identifier,
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setBanner({ type: "error", message: data.detail || "Reset failed." });
+        setBanner({ type: "error", message: data.detail || "Password change failed." });
       } else {
         setDone(true);
         setBanner({ type: "success", message: data.message || "Password reset successfully." });
@@ -363,8 +368,8 @@ function ResetPasswordPage({ onBack, onLogoClick }) {
 
   return (
     <AuthShell
-      title="Reset password"
-      subtitle="Enter your username or email and choose a new password."
+      title="Change password"
+      subtitle="Verify your current password, then choose a new one."
       onLogoClick={onLogoClick}
     >
       <form style={s.form} onSubmit={handleSubmit}>
@@ -379,6 +384,14 @@ function ResetPasswordPage({ onBack, onLogoClick }) {
               required
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
+            />
+            <Field
+              label="Current Password"
+              type="password"
+              required
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
             />
             <Field
               label="New Password"
@@ -400,7 +413,7 @@ function ResetPasswordPage({ onBack, onLogoClick }) {
               onChange={(e) => setConfirmPassword(e.target.value)}
             />
             <button type="submit" style={s.submitBtn} className="lp-glow" disabled={loading}>
-              {loading ? "Resetting…" : "Reset Password"}
+              {loading ? "Changing…" : "Change Password"}
             </button>
           </>
         ) : (
