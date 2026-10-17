@@ -1276,7 +1276,18 @@ export default function App() {
     </div>
   );
 
-  const handleLogin = (userData) => { setUser(userData); setAuthPage("app"); };
+  // user object from /auth/login or /auth/register: { id, username, email, org }
+  const handleLogin = (userData) => {
+    // Normalise: support both old {name} shape and new {username} shape
+    const normalised = {
+      name: userData.name || userData.username || "User",
+      org:  userData.org  || "",
+      email: userData.email || "",
+      username: userData.username || userData.name || "User",
+    };
+    setUser(normalised);
+    setAuthPage("app");
+  };
   const handleLogout = () => { setUser(null); setResults(null); setHistory([]); setAuthPage("landing"); };
 
   if (authPage === "landing")

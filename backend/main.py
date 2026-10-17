@@ -1,6 +1,10 @@
-"""
-ECG Arrhythmia Classification - FastAPI Backend
-"""
+import sys, os
+# Ensure UTF-8 output on Windows so emoji in print() don't crash
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +19,10 @@ from starlette.concurrency import run_in_threadpool
 warnings.filterwarnings('ignore')
 
 app = FastAPI(title="ECG Classifier API")
+
+# ── Auth router (SQLite user store) ──────────────────────────────────────────
+from auth import router as auth_router
+app.include_router(auth_router)
 
 app.add_middleware(
     CORSMiddleware,
