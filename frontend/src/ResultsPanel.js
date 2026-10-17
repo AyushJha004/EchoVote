@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import ECGChart from "./ECGChart";
 import { jsPDF } from "jspdf";
 
-const API = process.env.REACT_APP_API_BASE || "http://localhost:8000";
+const API = process.env.REACT_APP_API_BASE || "";
 
 const CLASSES = [
   "Normal (N)",
@@ -64,6 +64,7 @@ export default function ResultsPanel({ data }) {
   const [tab, setTab] = useState("overview");
   const [sensitivity, setSensitivity] = useState(null);
   const [pertLoading, setPertLoading] = useState(false);
+  const [pertError, setPertError] = useState(null);
   const { signal, predictions, ensemble_probs, source_image } = data;
 
   const valid = Object.entries(predictions).filter(
@@ -102,6 +103,7 @@ export default function ResultsPanel({ data }) {
   const fetchPerturbation = useCallback(async () => {
     if (sensitivity || pertLoading || !signal || predClassIdx < 0) return;
     setPertLoading(true);
+    setPertError(null);
     try {
       const res = await fetch(`${API}/api/perturbation`, {
         method: "POST",
@@ -112,9 +114,21 @@ export default function ResultsPanel({ data }) {
           window: 10,
         }),
       });
-      const d = await res.json();
-      if (d.success) setSensitivity(d.sensitivity);
-    } catch (_) {
+      const contentType = res.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await res.json()
+        : null;
+      if (!res.ok) {
+        throw new Error(
+          data?.detail || `Server returned ${res.status} ${res.statusText}`,
+        );
+      }
+      if (!data?.success || !Array.isArray(data.sensitivity)) {
+        throw new Error("The server did not return a valid heatmap.");
+      }
+      setSensitivity(data.sensitivity);
+    } catch (error) {
+      setPertError(error.message || "Failed to compute the heatmap.");
     } finally {
       setPertLoading(false);
     }
@@ -510,6 +524,19 @@ export default function ResultsPanel({ data }) {
                 <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
                   Running masked predictions across all models...
                 </div>
+              </div>
+            )}
+            {pertError && (
+              <div
+                role="alert"
+                style={{
+                  fontSize: 12,
+                  color: "var(--red-light)",
+                  textAlign: "center",
+                  padding: "12px 0 0",
+                }}
+              >
+                Heatmap failed: {pertError}
               </div>
             )}
             {!sensitivity && !pertLoading && (

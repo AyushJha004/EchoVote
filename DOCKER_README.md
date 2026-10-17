@@ -1,24 +1,23 @@
-# CardioAI — Docker Deployment
+# EchoVote — Docker Deployment
 
 ## Prerequisites
 
 1. **Download Docker Desktop**: https://www.docker.com/products/docker-desktop/
-2. **Install it** (takes 5 mins)
-3. **Restart your computer**
+2. Start Docker Desktop.
 
 ---
 
 ## Quick Start
 
-### Step 1 — Add Models
+### Step 1 — Add the trained models
 
 Place your trained model files in the `models/` folder:
 
 ```
 models/
-├── ecg_1d_cnn.h5
-├── ecg_bilstm.h5
-├── ecg_cnn_lstm.h5
+├── ecg_1d_cnn.keras
+├── ecg_bilstm.keras
+├── ecg_cnn_lstm.keras
 ├── ecg_lr.pkl
 ├── ecg_knn.pkl
 ├── ecg_svm.pkl
@@ -29,28 +28,30 @@ models/
 
 ### Step 2 — Start Everything
 
-Open PowerShell in the `ecg-app` folder:
+Open PowerShell in the repository folder:
 
 ```powershell
-docker-compose up --build
+docker compose up -d --build
 ```
 
-Wait for both services to start:
+The first model load can take several minutes. Check readiness using:
+
+```powershell
+curl.exe http://localhost:3001/api/health
 ```
-backend  | INFO: Uvicorn running on http://0.0.0.0:8000
-frontend | ... compiled successfully
-```
+
+With trained models available, the response reports `"models_loaded":8` and `"demo_mode":false`.
 
 ### Step 3 — Open App
 
-Visit: **http://localhost:3000**
+Visit: **http://localhost:3001**
 
 ---
 
 ## What's Running
 
-- **Backend**: http://localhost:8000 (FastAPI)
-- **Frontend**: http://localhost:3000 (React + Nginx)
+- **Backend**: http://localhost:8001 (FastAPI)
+- **Frontend**: http://localhost:3001 (React + Nginx)
 - **API Proxy**: `/api/*` routes to backend
 
 ---
@@ -58,47 +59,32 @@ Visit: **http://localhost:3000**
 ## Commands
 
 ```powershell
-# Start everything
-docker-compose up
+# Start or resume after a system restart
+docker compose up -d
 
-# Start in background
-docker-compose up -d
+# Stop the services
+docker compose stop
 
-# Stop everything
-docker-compose down
+# View backend logs
+docker compose logs --tail 100 backend
 
-# View logs
-docker-compose logs -f backend
-docker-compose logs -f frontend
-
-# Rebuild after code changes
-docker-compose up --build
+# Rebuild and start after code changes
+docker compose up -d --build
 ```
 
 ---
 
 ## Troubleshooting
 
-**Port 8000 already in use:**
-```powershell
-netstat -ano | findstr :8000
-taskkill /PID <PID> /F
-```
-
-**Port 3000 already in use:**
-```powershell
-netstat -ano | findstr :3000
-taskkill /PID <PID> /F
-```
-
 **Models not loading:**
 - Check `models/` folder exists
 - Verify file names match exactly
-- Restart: `docker-compose down && docker-compose up --build`
+- Check startup: `docker compose logs --tail 100 backend`
 
 **Backend offline:**
 ```powershell
-docker-compose logs backend
+docker compose ps
+docker compose logs --tail 100 backend
 ```
 
 ---

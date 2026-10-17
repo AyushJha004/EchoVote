@@ -74,8 +74,16 @@ export default function App() {
         body,
         headers: isForm ? undefined : { "Content-Type": "application/json" },
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Server error");
+      const contentType = res.headers.get("content-type") || "";
+      const data = contentType.includes("application/json")
+        ? await res.json()
+        : null;
+      if (!res.ok) {
+        throw new Error(
+          data?.detail || `Server returned ${res.status} ${res.statusText}`
+        );
+      }
+      if (!data) throw new Error("Server returned an unexpected non-JSON response");
       setResults(data);
       setHistory((h) => [
         { id: Date.now(), time: new Date().toLocaleTimeString(), data },

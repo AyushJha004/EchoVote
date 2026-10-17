@@ -11,13 +11,14 @@ services:
       - ./models:/app/models
     environment:
       - PYTHONUNBUFFERED=1
+    init: true
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
       interval: 30s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 60s
+      start_period: 5m
 
   # Frontend (React + Nginx)
   frontend:

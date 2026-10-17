@@ -5,11 +5,13 @@ ECG Arrhythmia Classification - FastAPI Backend
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
+import asyncio
 import io
 import os
 import joblib
 import json
 import warnings
+from starlette.concurrency import run_in_threadpool
 warnings.filterwarnings('ignore')
 
 app = FastAPI(title="ECG Classifier API")
@@ -39,6 +41,7 @@ CLINICAL_INFO = {
 
 models = {}
 scaler = None
+prediction_lock = asyncio.Lock()
 
 def load_models():
     global models, scaler
@@ -213,7 +216,7 @@ def demo_predict(signal):
 DL_MODELS = {'1D-CNN', 'BiLSTM', 'CNN-LSTM'}
 
 
-def run_predict(signal):
+def _run_predict(signal):
     global models, scaler
 
     if not models:
@@ -237,8 +240,12 @@ def run_predict(signal):
                 pred_class = int(np.argmax(probs))
                 confidence = float(probs[pred_class])
             else:
-                pred_class = int(model.predict(signal_scaled)[0])
                 probs_all  = model.predict_proba(signal_scaled)[0]
+                pred_class = (
+                    int(np.argmax(probs_all))
+                    if name == 'KNN'
+                    else int(model.predict(signal_scaled)[0])
+                )
                 confidence = float(probs_all[pred_class])
                 probs      = probs_all
 
@@ -256,13 +263,70 @@ def run_predict(signal):
     return results, compute_ensemble_probs(results)
 
 
+def _run_predict_batch(signals):
+    global models, scaler
+
+    if not models:
+        return [demo_predict(signal) for signal in signals]
+
+    signals = np.nan_to_num(np.asarray(signals, dtype=float), nan=0.0)
+    signal_scaled = (
+        scaler.transform(signals)
+        if scaler is not None
+        else signals
+    )
+    signal_max = np.max(signals, axis=1, keepdims=True)
+    signals_dl = (signals / (signal_max + 1e-8)).reshape(-1, 187, 1)
+    results = [{} for _ in signals]
+
+    for name, model in models.items():
+        try:
+            if name in DL_MODELS:
+                probs_batch = model.predict(signals_dl, verbose=0)
+                pred_classes = np.argmax(probs_batch, axis=1)
+            else:
+                probs_batch = model.predict_proba(signal_scaled)
+                pred_classes = (
+                    np.argmax(probs_batch, axis=1)
+                    if name == 'KNN'
+                    else model.predict(signal_scaled).astype(int)
+                )
+
+            for index, (pred_class, probs) in enumerate(zip(pred_classes, probs_batch)):
+                pred_class = int(pred_class)
+                confidence = float(probs[pred_class])
+                results[index][name] = {
+                    'prediction': LABEL_MAP[pred_class].strip(),
+                    'confidence': round(confidence, 4),
+                    'probs': [round(float(p), 4) for p in probs],
+                    'class_idx': pred_class,
+                    'type': 'DL' if name in DL_MODELS else 'ML'
+                }
+        except Exception as e:
+            for result in results:
+                result[name] = {
+                    'prediction': 'Error',
+                    'confidence': 0.0,
+                    'probs': [0] * 5,
+                    'error': str(e),
+                    'type': 'DL' if name in DL_MODELS else 'ML'
+                }
+
+    return [(result, compute_ensemble_probs(result)) for result in results]
+
+
+async def run_predict(signal):
+    async with prediction_lock:
+        return await run_in_threadpool(_run_predict, signal)
+
+
 @app.on_event("startup")
 def startup():
     load_models()
 
 
 @app.get("/api/health")
-def health():
+async def health():
     return {
         'status': 'ok',
         'models_loaded': len(models),
@@ -293,7 +357,7 @@ async def predict_csv(file: UploadFile = File(...)):
         if len(data) < 187:
             data = np.pad(data, (0, 187 - len(data)))
         data = np.nan_to_num(data, nan=0.0)
-        results, ensemble_probs = run_predict(data)
+        results, ensemble_probs = await run_predict(data)
         return {'success': True, 'signal': data.tolist(), 'predictions': results, 'ensemble_probs': ensemble_probs}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -305,7 +369,7 @@ async def predict_manual(payload: dict):
         values = np.array(payload['values'], dtype=float)
         if len(values) != 187:
             raise ValueError(f"Need 187 values, got {len(values)}")
-        results, ensemble_probs = run_predict(values)
+        results, ensemble_probs = await run_predict(values)
         return {'success': True, 'signal': values.tolist(), 'predictions': results, 'ensemble_probs': ensemble_probs}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -381,7 +445,7 @@ async def predict_image(file: UploadFile = File(...)):
         signal   = (raw - baseline) / span                 # 0 at baseline, 1 at peak
         signal   = np.clip(signal, 0.0, 1.0)              # clamp sub-baseline noise
 
-        results, ensemble_probs = run_predict(signal)
+        results, ensemble_probs = await run_predict(signal)
 
         # Return original image as base64 so frontend can display it exactly
         import base64
@@ -420,34 +484,42 @@ async def perturbation_map(payload: dict):
         if len(values) != 187:
             raise ValueError(f"Need 187 values, got {len(values)}")
 
-        # Baseline confidence for pred_class
-        base_results, base_probs = run_predict(values)
-        base_conf = base_probs[pred_class]
-
-        sensitivity = np.zeros(187)
-
-        for start in range(0, 187, window):
-            end = min(start + window, 187)
-            masked = values.copy()
-            masked[start:end] = 0.0
-            _, masked_probs = run_predict(masked)
-            drop = base_conf - masked_probs[pred_class]
-            sensitivity[start:end] = max(drop, 0.0)
-
-        # Normalise to 0-1
-        s_max = sensitivity.max()
-        if s_max > 0:
-            sensitivity = sensitivity / s_max
-
-        return {
-            'success': True,
-            'sensitivity': [round(float(v), 4) for v in sensitivity],
-            'base_conf': round(float(base_conf), 4),
-            'pred_class': pred_class,
-            'window': window,
-        }
+        async with prediction_lock:
+            return await run_in_threadpool(compute_perturbation, values, pred_class, window)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+def compute_perturbation(values, pred_class, window):
+    signals = [values]
+    windows = []
+    for start in range(0, 187, window):
+        end = min(start + window, 187)
+        masked = values.copy()
+        masked[start:end] = 0.0
+        signals.append(masked)
+        windows.append((start, end))
+
+    predictions = _run_predict_batch(signals)
+    _, base_probs = predictions[0]
+    base_conf = base_probs[pred_class]
+    sensitivity = np.zeros(187)
+
+    for (start, end), (_, masked_probs) in zip(windows, predictions[1:]):
+        drop = base_conf - masked_probs[pred_class]
+        sensitivity[start:end] = max(drop, 0.0)
+
+    s_max = sensitivity.max()
+    if s_max > 0:
+        sensitivity = sensitivity / s_max
+
+    return {
+        'success': True,
+        'sensitivity': [round(float(v), 4) for v in sensitivity],
+        'base_conf': round(float(base_conf), 4),
+        'pred_class': pred_class,
+        'window': window,
+    }
 
 
 @app.get("/api/clinical-info")
