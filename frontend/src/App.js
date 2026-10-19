@@ -4,6 +4,7 @@ import ECGChart from "./ECGChart";
 import ResultsPanel from "./ResultsPanel";
 import LandingPage from "./LandingPage";
 import { LoginPage, SignupPage } from "./AuthPages";
+import { getEnsemblePrediction } from "./ensemble";
 
 const API = process.env.REACT_APP_API_BASE || "";
 
@@ -517,19 +518,16 @@ export default function App() {
               ([, r]) =>
                 (counts[r.prediction] = (counts[r.prediction] || 0) + 1),
             );
-            const consensus = (
-              Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] ||
-              "Unknown"
-            ).trim();
+            const { scores: ensProbs, prediction: consensus, classIndex } =
+              getEnsemblePrediction(
+                h.data.predictions,
+                h.data.ensemble_probs,
+                CLASS_LIST,
+              );
             const color = COLOR_MAP[consensus] || "#5b4bd6";
             const agreePct =
               ((counts[consensus] || 0) / (preds.length || 1)) * 100;
-            const avgConf =
-              preds
-                .filter(([, r]) => r.prediction === consensus)
-                .reduce((s, [, r]) => s + r.confidence, 0) /
-              (counts[consensus] || 1);
-            const ensProbs = h.data.ensemble_probs || CLASS_LIST.map(() => 0);
+            const meanClassScore = classIndex >= 0 ? ensProbs[classIndex] : 0;
             const dlCount = preds.filter(([n]) =>
               ["1D-CNN", "BiLSTM", "CNN-LSTM"].includes(n),
             ).length;
@@ -609,7 +607,7 @@ export default function App() {
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
                     <div style={{ fontSize: 22, fontWeight: 800, color }}>
-                      {(avgConf * 100).toFixed(1)}%
+                      {(meanClassScore * 100).toFixed(1)}%
                     </div>
                     <div
                       style={{
@@ -619,7 +617,7 @@ export default function App() {
                         letterSpacing: "0.4px",
                       }}
                     >
-                      avg conf
+                      mean score
                     </div>
                   </div>
                 </div>
@@ -641,7 +639,7 @@ export default function App() {
                       color: levelColor,
                     },
                     {
-                      label: "Consensus",
+                      label: "Model Agreement Tier",
                       value: consensusLevel,
                       color: levelColor,
                     },
@@ -819,7 +817,7 @@ export default function App() {
   const GuidePage = () => {
     const [section, setSection] = useState("arrhythmia");
     const sections = [
-      { id: "arrhythmia", label: "🫀 Arrhythmia Classes" },
+      { id: "arrhythmia", label: "🫀 AAMI Beat Classes" },
       { id: "howtouse", label: "📋 How to Use" },
       { id: "tabs", label: "🗂 Result Tabs" },
       { id: "heatmap", label: "🌡 Sensitivity Heatmap" },
@@ -860,7 +858,7 @@ export default function App() {
           ))}
         </div>
 
-        {/* ── Arrhythmia Classes ── */}
+        {/* ── AAMI Beat Classes ── */}
         {section === "arrhythmia" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             {[
@@ -868,31 +866,31 @@ export default function App() {
                 title: "🟢 Normal (N)",
                 color: "var(--green-light)",
                 content:
-                  "Regular P-QRS-T pattern. Normal sinus rhythm. Rate 60–100 bpm. No clinical action required.",
+                  "AAMI Class N is the model's predicted beat-class label. It does not confirm sinus rhythm or normal conduction intervals; interpret it alongside the ECG and clinical context.",
               },
               {
                 title: "🔵 Supraventricular (S)",
                 color: "var(--teal-light)",
                 content:
-                  "SVT / PAC / Atrial Fibrillation. Originates above the ventricles. Narrow QRS complex. Action: Cardiology referral, Holter monitor, consider rate control.",
+                  "AAMI Class S is the model's predicted beat-class label. It does not independently confirm an arrhythmia type, morphology, or conduction intervals; interpret it alongside the ECG and clinical context.",
               },
               {
                 title: "🔴 Ventricular (V)",
                 color: "var(--red-light)",
                 content:
-                  "PVC / VT / VF. Originates in the ventricles. Wide QRS (>0.12s). Action: Immediate clinical attention. Amiodarone or defibrillation may be required.",
+                  "AAMI Class V is the model's predicted beat-class label. It does not independently confirm a diagnosis or determine clinical urgency; interpret it alongside the ECG and clinical context.",
               },
               {
                 title: "🟠 Fusion (F)",
                 color: "var(--amber-light)",
                 content:
-                  "Fusion beat: simultaneous normal sinus and ventricular activation. Intermediate QRS morphology. Clinical review recommended.",
+                  "AAMI Class F is the model's predicted beat-class label. It does not independently establish the underlying activation mechanism; interpret it alongside the ECG and clinical context.",
               },
               {
                 title: "🟣 Unclassifiable (Q)",
                 color: "var(--purple-light)",
                 content:
-                  "Paced beats or unknown morphology. Signal quality may be poor or beat does not fit standard patterns. Manual cardiologist review required.",
+                  "AAMI Class Q is the model's predicted beat-class label for the unclassifiable category. It does not determine why the beat received this classification; interpret it alongside the ECG and clinical context.",
               },
             ].map(({ title, color, content }) => (
               <div
@@ -982,10 +980,10 @@ export default function App() {
                   "The default tab after any analysis. Shows the ensemble verdict (the class most models agreed on), confidence percentage, and agreement count. Also contains the Sensitivity Heatmap and the DL vs ML comparison — all in one place. Start here.",
               },
               {
-                title: "📊 Disease Probability Tab",
+                title: "📊 Ensemble Scores Tab",
                 color: "var(--teal-light)",
                 content:
-                  "Shows the averaged probability for each of the 5 arrhythmia classes across all models. The top predicted class is highlighted. Below that, a full per-model probability table lets you see exactly what each model output for every class — useful for research and second-opinion review.",
+                  "Displays the averaged model score for each of the 5 AAMI beat classes. The highest mean score determines the predicted class; model vote counts are shown separately as agreement. Scores are uncalibrated model outputs, not clinical probabilities. A per-model distribution table is also available.",
               },
               {
                 title: "🤖 All Models Tab",
@@ -1232,7 +1230,7 @@ export default function App() {
           {
             title: "🏥 Project",
             content:
-              "EchoVote is an AI-powered ECG arrhythmia classification tool built as a capstone research project at BMSCE Bengaluru. It uses an 8-model ensemble voting system — combining deep learning and classical machine learning — to classify single heartbeats into 5 AAMI standard classes.",
+              "EchoVote is an AI-powered ECG beat-classification tool built as a capstone research project at BMSCE Bengaluru. It averages class scores from 8 deep-learning and classical machine-learning models to select one of 5 AAMI classes. Individual model votes are reported separately as agreement.",
           },
           {
             title: "📊 Dataset",
@@ -1242,7 +1240,7 @@ export default function App() {
           {
             title: "🧠 Ensemble Models",
             content:
-              "3 Deep Learning: 1D-CNN (Conv1D → BatchNorm → MaxPool → Dense), BiLSTM (Bidirectional LSTM × 2), CNN-LSTM (Conv1D blocks → BiLSTM × 2). 5 Machine Learning: Random Forest (100 estimators), XGBoost, KNN, SVM, Logistic Regression. Final prediction is determined by majority vote across all 8 models.",
+              "3 Deep Learning: 1D-CNN (Conv1D → BatchNorm → MaxPool → Dense), BiLSTM (Bidirectional LSTM × 2), CNN-LSTM (Conv1D blocks → BiLSTM × 2). 5 Machine Learning: Random Forest (100 estimators), XGBoost, KNN, SVM, Logistic Regression. The predicted class is the class with the highest averaged probability score across valid models. Individual model votes are shown separately as agreement, not used to select the predicted class.",
           },
           {
             title: "🌡 Explainability",

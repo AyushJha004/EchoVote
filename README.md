@@ -129,10 +129,13 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 | All Models | Individual cards for all 8 models with confidence and probability breakdown |
 
 ### Clinical Summary (bottom of results)
-- Final prediction with confidence
+- Predicted class selected by the highest averaged model class score
+- Model vote share and agreement tier shown separately from the selected class
 - ⚠️ DL vs ML disagreement alert when groups disagree
-- Consensus level: HIGH / MODERATE / LOW
-- Clinical recommendation based on prediction + consensus
+- Model Agreement Tier: HIGH / MODERATE / LOW, based on vote share
+- Neutral note to interpret the model output alongside the ECG and clinical context
+
+The averaged class scores are uncalibrated model outputs, not clinical probabilities or a diagnosis.
 
 ### Sensitivity Heatmap
 Perturbation-based explainability — slides a 10-sample window across the 187-point signal, masks each window, re-runs all 8 models, and shows which ECG segments most influenced the prediction.
@@ -144,11 +147,12 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 ### PDF Export
 Click **⬇ Export PDF** in the results tab bar to download a clinical-style report. The PDF includes:
 - Colored header with report title and timestamp
-- Ensemble prediction, confidence, and agreement count
-- Stats row — models run, agreement %, consensus level, DL/ML split
-- Ensemble disease probability bars for all 5 classes
+- Predicted beat class selected by the highest averaged class score
+- Stats row — models run, vote agreement %, Model Agreement Tier, DL/ML split
+- Ensemble class-score bars for all 5 classes
 - Per-model results table with prediction, confidence, and all 5 class probabilities
-- Clinical summary with final prediction and recommendation
+- Methodology note distinguishing the averaged class scores from model vote agreement
+- Neutral interpretation note; scores are uncalibrated and require ECG and clinical context
 - Disclaimer footer
 
 File saves as `EchoVote_Report_YYYY-MM-DD.pdf`.

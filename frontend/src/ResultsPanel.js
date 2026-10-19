@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import ECGChart from "./ECGChart";
 import { jsPDF } from "jspdf";
+import { getEnsemblePrediction } from "./ensemble";
 
 const API = process.env.REACT_APP_API_BASE || "";
 
@@ -70,35 +71,22 @@ export default function ResultsPanel({ data }) {
   const valid = Object.entries(predictions).filter(
     ([, r]) => r.prediction && r.prediction !== "Error",
   );
+  const dlPreds = valid.filter(([n]) => DL_NAMES.has(n));
+  const mlPreds = valid.filter(([n]) => !DL_NAMES.has(n));
+
+  const {
+    scores: ensProbs,
+    prediction: consensus,
+    classIndex: topDiseaseIdx,
+  } = getEnsemblePrediction(predictions, ensemble_probs, CLASSES);
+
   const counts = {};
   valid.forEach(
     ([, r]) => (counts[r.prediction] = (counts[r.prediction] || 0) + 1),
   );
-  const consensus = (
-    Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] || "Unknown"
-  ).trim();
   const sev = SEV[consensus] || SEV["Normal (N)"];
   const predClassIdx = CLASSES.indexOf(consensus);
-
-  const avgConf =
-    valid
-      .filter(([, r]) => r.prediction === consensus)
-      .reduce((s, [, r]) => s + r.confidence, 0) / (counts[consensus] || 1);
-
-  const dlPreds = valid.filter(([n]) => DL_NAMES.has(n));
-  const mlPreds = valid.filter(([n]) => !DL_NAMES.has(n));
-
-  const ensProbs =
-    ensemble_probs ||
-    (() => {
-      const arr = valid.map(([, r]) => r.probs || []);
-      if (!arr.length) return CLASSES.map(() => 0);
-      return CLASSES.map(
-        (_, i) => arr.reduce((s, p) => s + (p[i] || 0), 0) / arr.length,
-      );
-    })();
-
-  const topDiseaseIdx = ensProbs.indexOf(Math.max(...ensProbs));
+  const selectedClassScore = topDiseaseIdx >= 0 ? ensProbs[topDiseaseIdx] : 0;
 
   const fetchPerturbation = useCallback(async () => {
     if (sensitivity || pertLoading || !signal || predClassIdx < 0) return;
@@ -139,249 +127,705 @@ export default function ResultsPanel({ data }) {
     fetchPerturbation();
   }, []);
 
+  const REPORT_SCOPE_NOTE =
+    "This report summarizes the model's classification of an isolated 187-sample beat segment. ECG morphology, rhythm, rate, and conduction intervals have not been independently measured by this system.";
+  const REPORT_INTERPRETATION_NOTE =
+    "This model output requires interpretation alongside the ECG and clinical context.";
+
+  const CLINICAL_DEFINITIONS = {
+    "Normal (N)": {
+      fullName: "Predicted ECG Beat Class: Normal (N)",
+      aamiCode: "AAMI EC57 Class N · Isolated Beat Evaluation",
+      badgeBg: [15, 157, 138],
+    },
+    "Supraventricular (S)": {
+      fullName: "Predicted ECG Beat Class: Supraventricular Ectopic (S)",
+      aamiCode: "AAMI EC57 Class S · Atrial / Nodal Ectopic Beat",
+      badgeBg: [61, 85, 230],
+    },
+    "Ventricular (V)": {
+      fullName: "Predicted ECG Beat Class: Ventricular Ectopic (V)",
+      aamiCode: "AAMI EC57 Class V · Ventricular Ectopic Beat",
+      badgeBg: [194, 54, 43],
+    },
+    "Fusion (F)": {
+      fullName: "Predicted ECG Beat Class: Fusion Beat (F)",
+      aamiCode: "AAMI EC57 Class F · Hybrid Activation",
+      badgeBg: [217, 131, 36],
+    },
+    "Unclassifiable (Q)": {
+      fullName: "Predicted ECG Beat Class: Unclassifiable (Q)",
+      aamiCode: "AAMI EC57 Class Q · Indeterminate Morphology",
+      badgeBg: [91, 75, 214],
+    }
+  };
+
   const exportPDF = () => {
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const W = 210,
-      M = 18;
-    const col = sev.border;
-    let y = 0;
+      H = 297,
+      M = 14;
+    const usableW = W - 2 * M; // 182 mm
 
     const hex2rgb = (hex) => {
-      const r = parseInt(hex.slice(1, 3), 16);
-      const g = parseInt(hex.slice(3, 5), 16);
-      const b = parseInt(hex.slice(5, 7), 16);
-      return [r, g, b];
+      if (!hex || typeof hex !== "string") return [91, 75, 214];
+      const clean = hex.replace("#", "");
+      if (clean.length === 3) {
+        return [
+          parseInt(clean[0] + clean[0], 16),
+          parseInt(clean[1] + clean[1], 16),
+          parseInt(clean[2] + clean[2], 16),
+        ];
+      }
+      return [
+        parseInt(clean.slice(0, 2), 16) || 0,
+        parseInt(clean.slice(2, 4), 16) || 0,
+        parseInt(clean.slice(4, 6), 16) || 0,
+      ];
     };
 
-    // ── Header bar ──────────────────────────────────────────────────────
+    const clin = CLINICAL_DEFINITIONS[consensus] || CLINICAL_DEFINITIONS["Normal (N)"];
     const [hr, hg, hb] = hex2rgb(sev.border);
-    doc.setFillColor(hr, hg, hb);
+
+    // Cohort calculations for DL and ML
+    const getCohortSummary = (group) => {
+      if (!group.length) return { consensus: "N/A", avgConf: 0, count: 0, agreePct: 0, total: 0 };
+      const c = {};
+      group.forEach(([, r]) => (c[r.prediction] = (c[r.prediction] || 0) + 1));
+      const gConsensus = Object.keys(c).sort((a, b) => c[b] - c[a])[0];
+      const matching = group.filter(([, r]) => r.prediction === gConsensus);
+      const gAvgConf =
+        matching.reduce((s, [, r]) => s + (r.confidence || 0), 0) / (matching.length || 1);
+      const gAgreePct = matching.length / group.length;
+      return { consensus: gConsensus, avgConf: gAvgConf, count: matching.length, total: group.length, agreePct: gAgreePct };
+    };
+
+    const dlSummary = getCohortSummary(dlPreds);
+    const mlSummary = getCohortSummary(mlPreds);
+    const isConcordant = dlSummary.consensus === mlSummary.consensus;
+    const concordanceText = isConcordant
+      ? "DL & ML Cohorts Concordant"
+      : `Cohort Discrepancy (DL: ${dlSummary.consensus?.split(" ")[0]} vs ML: ${mlSummary.consensus?.split(" ")[0]})`;
+
+    const agreePct = (counts[consensus] || 0) / (valid.length || 1);
+    const agreementTier =
+      agreePct >= 0.875 ? "High" : agreePct >= 0.625 ? "Moderate" : "Low";
+
+    // =========================================================================
+    // PAGE 1: MODEL OUTPUT & CLASS SCORE DISTRIBUTION
+    // =========================================================================
+
+    // ── Header bar ───────────────────────────────────────────────────────────
+    doc.setFillColor(18, 24, 38);
     doc.rect(0, 0, W, 22, "F");
+
+    // Accent strip under header
+    doc.setFillColor(hr, hg, hb);
+    doc.rect(0, 21.2, W, 0.8, "F");
+
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(16);
+    doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text("EchoVote — ECG Analysis Report", M, 14);
-    doc.setFontSize(8);
+    doc.text("EchoVote — ECG Beat-Class & Ensemble Report", M, 11);
+
+    doc.setFontSize(7.5);
     doc.setFont("helvetica", "normal");
-    doc.text(`Generated: ${new Date().toLocaleString()}`, W - M, 14, {
+    doc.setTextColor(160, 174, 192);
+    doc.text("Lead II Cardiac Arrhythmia Decision Support · 8-Model Ensemble Architecture", M, 17);
+
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(203, 213, 225);
+    doc.text("CONFIDENTIAL MEDICAL DECISION SUPPORT", W - M, 10.5, { align: "right" });
+
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(160, 174, 192);
+    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()} · Page 1 of 2`, W - M, 16.5, {
       align: "right",
     });
-    y = 32;
 
-    // ── Ensemble Verdict ────────────────────────────────────────────────
-    doc.setTextColor(80, 80, 80);
-    doc.setFontSize(8);
+    let y = 29;
+
+    // ── Section 1: Model Output & Executive Summary ──────────────────────────
+    doc.setFontSize(8.5);
     doc.setFont("helvetica", "bold");
-    doc.text("ENSEMBLE PREDICTION", M, y);
-    y += 6;
-    doc.setFontSize(18);
+    doc.setTextColor(30, 41, 59);
+    doc.text("1. ALGORITHMIC BEAT-CLASS PREDICTION", M, y);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.line(M, y + 2, W - M, y + 2);
+    y += 6.5;
+
+    // Primary Classification Banner Card (Dynamically Sized)
+    const [badgeR, badgeG, badgeB] = clin.badgeBg;
+    const badgeW = 62;
+    const badgeH = 6.2;
+    const badgeX = W - M - badgeW - 3;
+    const badgeY = y + 3.5;
+
+    // Measure wrapped diagnosis title
+    doc.setFontSize(12.5);
+    doc.setFont("helvetica", "bold");
+    const titleLines = doc.splitTextToSize(clin.fullName, usableW - badgeW - 14);
+
+    // Meta details formatted in 2 clean wrapped lines
+    const metaLine1 = `${clin.aamiCode}   |   Model Votes for Predicted Class: ${counts[consensus] || 0}/${valid.length} (${(agreePct * 100).toFixed(0)}%)   |   Mean Class Score: ${(selectedClassScore * 100).toFixed(1)}%`;
+    const metaLine2 = `Cohort Agreement: ${concordanceText}   |   Model Agreement Tier: ${agreementTier}`;
+    doc.setFontSize(7.4);
+    doc.setFont("helvetica", "normal");
+    const metaLines1 = doc.splitTextToSize(metaLine1, usableW - 14);
+    const metaLines2 = doc.splitTextToSize(metaLine2, usableW - 14);
+
+    const bannerH = Math.max(30, 14 + titleLines.length * 4.8 + (metaLines1.length + metaLines2.length) * 3.5);
+
+    doc.setFillColor(250, 251, 254);
+    doc.setDrawColor(hr, hg, hb);
+    doc.setLineWidth(0.6);
+    doc.roundedRect(M, y, usableW, bannerH, 1.5, 1.5, "FD");
+
+    // Left accent block
+    doc.setFillColor(hr, hg, hb);
+    doc.rect(M, y, 3.5, bannerH, "F");
+
+    // Model output badge (pill)
+    doc.setFillColor(badgeR, badgeG, badgeB);
+    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.2, 1.2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "bold");
+    doc.text("MODEL OUTPUT", badgeX + badgeW / 2, badgeY + 4.3, { align: "center" });
+
+    // Category label
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("PRIMARY ALGORITHMIC BEAT PREDICTION (AAMI EC57):", M + 6.5, y + 5.5);
+
+    // Predicted beat class (multiline safe)
+    doc.setFontSize(12.5);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(hr, hg, hb);
-    doc.text(consensus, M, y);
-    y += 6;
-    doc.setFontSize(10);
+    let titleY = y + 12;
+    doc.text(titleLines, M + 6.5, titleY);
+    titleY += titleLines.length * 4.8;
+
+    // Metadata lines (multiline safe)
+    doc.setFontSize(7.4);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 100, 100);
-    doc.text(
-      `${counts[consensus]}/${valid.length} models agree  ·  ${(avgConf * 100).toFixed(1)}% avg confidence  ·  Ensemble prob: ${(ensProbs[topDiseaseIdx] * 100).toFixed(1)}%`,
-      M,
-      y,
-    );
-    y += 10;
+    doc.setTextColor(51, 65, 85);
+    doc.text(metaLines1, M + 6.5, titleY);
+    titleY += metaLines1.length * 3.5;
+    doc.text(metaLines2, M + 6.5, titleY);
 
-    // ── Stats row ───────────────────────────────────────────────────────
-    const agreePct = counts[consensus] / valid.length;
-    const consensusLevel =
-      agreePct >= 0.875 ? "HIGH" : agreePct >= 0.625 ? "MODERATE" : "LOW";
-    const stats = [
-      ["Models Run", `${valid.length}/8`],
-      ["Agreement", `${(agreePct * 100).toFixed(0)}%`],
-      ["Consensus", consensusLevel],
-      ["DL / ML", `${dlPreds.length} / ${mlPreds.length}`],
-    ];
-    const cellW = (W - M * 2) / 4;
-    doc.setFillColor(245, 246, 250);
-    doc.rect(M, y, W - M * 2, 16, "F");
-    stats.forEach(([label, val], i) => {
-      const x = M + i * cellW + cellW / 2;
-      doc.setFontSize(13);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(hr, hg, hb);
-      doc.text(val, x, y + 7, { align: "center" });
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(140, 140, 140);
-      doc.text(label.toUpperCase(), x, y + 13, { align: "center" });
-    });
-    y += 22;
+    y += bannerH + 4.5;
 
-    // ── Ensemble Disease Probabilities ──────────────────────────────────
-    doc.setFontSize(9);
+    // Input scope and measurement limitations
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "normal");
+    const obsLines = doc.splitTextToSize(REPORT_SCOPE_NOTE, usableW - 12);
+    const obsH = Math.max(22, 10 + obsLines.length * 3.7);
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(M, y, usableW, obsH, 1.5, 1.5, "FD");
+
+    doc.setFontSize(7.8);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(60, 60, 60);
-    doc.text("ENSEMBLE DISEASE PROBABILITIES", M, y);
-    y += 5;
-    const barW = W - M * 2 - 50;
+    doc.setTextColor(30, 41, 59);
+    doc.text("INPUT SCOPE & MEASUREMENT LIMITS", M + 5, y + 5.5);
+
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text(obsLines, M + 5, y + 11.2);
+
+    y += obsH + 4;
+
+    // Neutral interpretation note
+    doc.setFontSize(7.0);
+    doc.setFont("helvetica", "normal");
+    const actionLines = doc.splitTextToSize(REPORT_INTERPRETATION_NOTE, usableW - 14);
+    const actH = Math.max(20, 15 + actionLines.length * 3.7);
+
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(M, y, usableW, actH, 1.5, 1.5, "FD");
+
+    doc.setFillColor(hr, hg, hb);
+    doc.rect(M, y, 2.5, actH, "F");
+
+    doc.setFontSize(7.8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(hr, hg, hb);
+    doc.text("INTERPRETATION NOTE", M + 5, y + 5.5);
+
+    doc.setFontSize(7.0);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(51, 65, 85);
+    doc.text(actionLines, M + 5, y + 11.2);
+
+    y += actH + 5.5;
+
+    // ── Section 2: Multi-Model Ensemble Consensus (Class Scores) ─────────────
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("2. ENSEMBLE CLASS SCORES", M, y);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.line(M, y + 2, W - M, y + 2);
+    y += 5.5;
+
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    const scoreMethodLines = doc.splitTextToSize(
+      "The predicted class is the class with the highest arithmetic mean of the valid models' class scores. Model vote counts are shown separately as agreement; scores are uncalibrated model outputs:",
+      usableW,
+    );
+    doc.text(scoreMethodLines, M, y);
+    y += scoreMethodLines.length * 3.5 + 1;
+
+    // Class Score Bars
+    const barW = usableW - 88;
     CLASSES.forEach((cls, i) => {
-      const pct = ensProbs[i] || 0;
+      const score = ensProbs[i] || 0;
+      const isSelected = cls === consensus;
       const [cr, cg, cb] = hex2rgb(COLOR[cls]);
-      doc.setFontSize(8);
-      doc.setFont("helvetica", i === topDiseaseIdx ? "bold" : "normal");
-      doc.setTextColor(cr, cg, cb);
-      doc.text(cls, M, y + 3.5);
-      doc.setFillColor(230, 232, 240);
-      doc.rect(M + 46, y, barW, 5, "F");
-      doc.setFillColor(cr, cg, cb);
-      doc.rect(M + 46, y, barW * pct, 5, "F");
-      doc.setTextColor(cr, cg, cb);
-      doc.text(`${(pct * 100).toFixed(1)}%`, M + 46 + barW + 3, y + 3.5);
-      y += 8;
-    });
-    y += 4;
 
-    // ── Per-Model Results Table ──────────────────────────────────────────
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(60, 60, 60);
-    doc.text("PER-MODEL RESULTS", M, y);
-    y += 5;
-    const cols = [
-      "Model",
-      "Type",
-      "Prediction",
-      "Confidence",
-      "N",
-      "S",
-      "V",
-      "F",
-      "Q",
-    ];
-    const colX = [
-      M,
-      M + 32,
-      M + 50,
-      M + 82,
-      M + 108,
-      M + 118,
-      M + 128,
-      M + 138,
-      M + 148,
-    ];
-    doc.setFillColor(hr, hg, hb);
-    doc.rect(M, y, W - M * 2, 7, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "bold");
-    cols.forEach((c, i) => doc.text(c, colX[i], y + 4.5));
-    y += 7;
-    valid.forEach(([name, pred], idx) => {
-      if (idx % 2 === 0) {
-        doc.setFillColor(248, 249, 252);
-        doc.rect(M, y, W - M * 2, 7, "F");
+      doc.setFontSize(7.5);
+      doc.setFont("helvetica", isSelected ? "bold" : "normal");
+      doc.setTextColor(cr, cg, cb);
+      doc.text(cls, M, y + 3.8);
+
+      // Track
+      doc.setFillColor(241, 245, 249);
+      doc.roundedRect(M + 46, y, barW, 4.8, 0.8, 0.8, "F");
+
+      // Fill
+      if (score > 0.005) {
+        doc.setFillColor(cr, cg, cb);
+        doc.roundedRect(M + 46, y, Math.max(barW * score, 1.5), 4.8, 0.8, 0.8, "F");
       }
-      const [pr, pg, pb] = hex2rgb(COLOR[pred.prediction] || "#8a8c9c");
-      doc.setTextColor(60, 60, 60);
-      doc.setFontSize(7);
-      doc.setFont("helvetica", "normal");
-      doc.text(name, colX[0], y + 4.5);
-      doc.setTextColor(
-        DL_NAMES.has(name) ? 107 : 44,
-        DL_NAMES.has(name) ? 127 : 194,
-        DL_NAMES.has(name) ? 255 : 138,
-      );
-      doc.text(DL_NAMES.has(name) ? "DL" : "ML", colX[1], y + 4.5);
-      doc.setTextColor(pr, pg, pb);
-      doc.setFont("helvetica", "bold");
-      doc.text(pred.prediction?.split(" ")[0] || "-", colX[2], y + 4.5);
-      doc.setTextColor(60, 60, 60);
-      doc.setFont("helvetica", "normal");
-      doc.text(
-        `${((pred.confidence || 0) * 100).toFixed(1)}%`,
-        colX[3],
-        y + 4.5,
-      );
-      (pred.probs || [0, 0, 0, 0, 0]).forEach((p, pi) => {
-        doc.setTextColor(
-          pred.class_idx === pi ? pr : 120,
-          pred.class_idx === pi ? pg : 120,
-          pred.class_idx === pi ? pb : 120,
-        );
-        doc.setFont("helvetica", pred.class_idx === pi ? "bold" : "normal");
-        doc.text(`${(p * 100).toFixed(0)}%`, colX[4 + pi], y + 4.5);
-      });
-      y += 7;
+
+      // Percentage
+      doc.setFontSize(7.2);
+      doc.setFont("helvetica", isSelected ? "bold" : "normal");
+      doc.setTextColor(cr, cg, cb);
+      doc.text(`${(score * 100).toFixed(1)}%`, M + 46 + barW + 3, y + 3.6);
+
+      // Plurality Vote / Primary Tag
+      if (isSelected) {
+        doc.setFillColor(cr, cg, cb);
+        doc.roundedRect(M + 46 + barW + 15, y + 0.3, 27, 4.2, 0.8, 0.8, "F");
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(5.5);
+        doc.setFont("helvetica", "bold");
+        doc.text("PREDICTED CLASS", M + 46 + barW + 28.5, y + 3.3, { align: "center" });
+      }
+
+      y += 6.5;
     });
-    y += 6;
 
-    // ── Clinical Summary ─────────────────────────────────────────────────
-    if (y > 240) {
-      doc.addPage();
-      y = 20;
-    }
-    doc.setFillColor(hr, hg, hb);
-    doc.rect(M, y, W - M * 2, 8, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(9);
-    doc.setFont("helvetica", "bold");
-    doc.text("CLINICAL SUMMARY", M + 4, y + 5.5);
-    y += 12;
+    y += 3;
 
-    const recMap = {
-      "Ventricular (V)":
-        "Urgent clinical review required. Ventricular arrhythmia detected — consult a cardiologist immediately.",
-      "Normal (N)":
-        consensusLevel === "HIGH"
-          ? "High-confidence normal sinus rhythm. Routine follow-up as per clinical protocol."
-          : "Normal sinus rhythm detected. Moderate model agreement — routine follow-up recommended.",
-      "Supraventricular (S)":
-        "Cardiology referral recommended. Consider Holter monitoring and rate control evaluation.",
-      "Fusion (F)":
-        "Fusion beat detected. Clinical review recommended to assess underlying rhythm.",
-      "Unclassifiable (Q)":
-        "Unclassifiable morphology. Manual review by a qualified cardiologist is required.",
-    };
-    const rec = recMap[consensus] || "Clinical review advised.";
-    doc.setTextColor(hr, hg, hb);
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.text("Final Prediction:", M, y);
+    // Essential Technical & Calibration Note Callout (Dynamically Sized)
+    const noteText =
+      "Ensemble methodology: the predicted class is the class with the highest arithmetic mean score across valid model probability distributions (soft voting). Exact score ties follow the fixed order N, S, V, F, Q. The count of individual model predictions for the selected class is reported separately as model agreement; it does not select the class. Scores are uncalibrated model outputs, not measured clinical confidence or disease probabilities, and require interpretation alongside the ECG and clinical context.";
+    doc.setFontSize(6.6);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(60, 60, 60);
-    doc.text(
-      `${consensus}  —  ${(avgConf * 100).toFixed(1)}% avg confidence`,
-      M + 30,
-      y,
-    );
-    y += 7;
-    doc.setTextColor(hr, hg, hb);
-    doc.setFont("helvetica", "bold");
-    doc.text("Recommendation:", M, y);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(60, 60, 60);
-    const recLines = doc.splitTextToSize(rec, W - M * 2 - 32);
-    doc.text(recLines, M + 32, y);
-    y += recLines.length * 5 + 6;
+    const noteLines = doc.splitTextToSize(noteText, usableW - 12);
+    const noteH = Math.max(22, 10 + noteLines.length * 3.4);
 
-    // ── Disclaimer ───────────────────────────────────────────────────────
-    doc.setFillColor(245, 246, 250);
-    doc.rect(M, y, W - M * 2, 10, "F");
-    doc.setFontSize(7);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.4);
+    doc.roundedRect(M, y, usableW, noteH, 1.5, 1.5, "FD");
+
+    doc.setFillColor(100, 116, 139);
+    doc.rect(M, y, 2.5, noteH, "F");
+
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("TECHNICAL VERIFICATION NOTE: CALIBRATION & SCORE INTERPRETATION", M + 5, y + 5);
+
+    doc.setFontSize(6.6);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text(noteLines, M + 5, y + 9.5);
+
+    // Page 1 Footer
+    doc.setFontSize(6.8);
     doc.setFont("helvetica", "italic");
-    doc.setTextColor(150, 150, 150);
+    doc.setTextColor(148, 163, 184);
     doc.text(
-      "Research tool only · Not FDA-approved · Not a medical device · Always consult a qualified cardiologist before clinical decisions.",
+      "Page 1 of 2: Model Output & Class Scores — Turn to Page 2 for Model Results & Technical Methodology",
       W / 2,
-      y + 6,
+      288,
       { align: "center" },
     );
 
-    doc.save(`EchoVote_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
+    // =========================================================================
+    // PAGE 2: DETAILED 8-MODEL AUDIT TABLE & RESEARCH METHODOLOGY
+    // =========================================================================
+    doc.addPage();
+
+    // Page 2 Header Bar
+    doc.setFillColor(18, 24, 38);
+    doc.rect(0, 0, W, 18, "F");
+    doc.setFillColor(hr, hg, hb);
+    doc.rect(0, 17.3, W, 0.7, "F");
+
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(11.5);
+    doc.setFont("helvetica", "bold");
+    doc.text("EchoVote — Detailed 8-Model Benchmark & Research Audit", M, 11);
+
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(160, 174, 192);
+    doc.text("Model-by-Model Verification Table · Capstone Project Viva Audit Data · Page 2 of 2", W - M, 11, {
+      align: "right",
+    });
+
+    y = 25;
+
+    // ── Section 3: Eight-Model Benchmark Table ───────────────────────────────
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("3. EIGHT-MODEL CLASSIFICATION BENCHMARK TABLE (TECHNICAL AUDIT)", M, y);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.line(M, y + 2, W - M, y + 2);
+    y += 5.5;
+
+    // Table Column Definitions
+    const colNames = ["Model Name", "Type", "Predicted Class", "Conf.", "N (%)", "S (%)", "V (%)", "F (%)", "Q (%)"];
+    const colWidths = [34, 14, 32, 17, 17, 17, 17, 17, 17];
+    let colX = [];
+    let curX = M;
+    colWidths.forEach((w) => {
+      colX.push(curX);
+      curX += w;
+    });
+
+    // Table Header
+    doc.setFillColor(30, 41, 59);
+    doc.rect(M, y, usableW, 6.2, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "bold");
+    colNames.forEach((name, idx) => {
+      doc.text(name, colX[idx] + 2, y + 4.2);
+    });
+    y += 6.2;
+
+    // Table Rows (All 8 Models)
+    valid.forEach(([name, pred], idx) => {
+      const isEven = idx % 2 === 0;
+      doc.setFillColor(isEven ? 255 : 248, isEven ? 255 : 250, isEven ? 255 : 252);
+      doc.rect(M, y, usableW, 6.2, "F");
+
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.2);
+      doc.line(M, y + 6.2, W - M, y + 6.2);
+
+      const isDL = DL_NAMES.has(name);
+      const [pr, pg, pb] = hex2rgb(COLOR[pred.prediction] || "#8a8c9c");
+
+      // Model Name
+      doc.setTextColor(30, 41, 59);
+      doc.setFontSize(6.8);
+      doc.setFont("helvetica", "bold");
+      doc.text(name, colX[0] + 2, y + 4.2);
+
+      // Type Badge
+      doc.setFillColor(isDL ? 238 : 240, isDL ? 242 : 253, isDL ? 255 : 250);
+      doc.roundedRect(colX[1] + 1.5, y + 1.2, 10, 3.8, 0.6, 0.6, "F");
+      doc.setTextColor(isDL ? 61 : 15, isDL ? 85 : 157, isDL ? 230 : 138);
+      doc.setFontSize(5.8);
+      doc.setFont("helvetica", "bold");
+      doc.text(isDL ? "DL" : "ML", colX[1] + 6.5, y + 3.8, { align: "center" });
+
+      // Predicted Class
+      doc.setTextColor(pr, pg, pb);
+      doc.setFontSize(6.8);
+      doc.setFont("helvetica", "bold");
+      doc.text(pred.prediction?.split(" ")[0] || "-", colX[2] + 2, y + 4.2);
+
+      // Model Confidence
+      doc.setTextColor(30, 41, 59);
+      doc.setFontSize(6.8);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${((pred.confidence || 0) * 100).toFixed(1)}%`, colX[3] + 2, y + 4.2);
+
+      // N, S, V, F, Q distributions
+      (pred.probs || [0, 0, 0, 0, 0]).forEach((p, pi) => {
+        const isMatch = pred.class_idx === pi;
+        const [cpr, cpg, cpb] = hex2rgb(COLOR[CLASSES[pi]]);
+        doc.setTextColor(isMatch ? cpr : 148, isMatch ? cpg : 163, isMatch ? cpb : 184);
+        doc.setFont("helvetica", isMatch ? "bold" : "normal");
+        doc.setFontSize(isMatch ? 6.8 : 6.3);
+        doc.text(`${(p * 100).toFixed(0)}%`, colX[4 + pi] + 2, y + 4.2);
+      });
+
+      y += 6.2;
+    });
+
+    y += 5;
+
+    // Cohort Sub-Analysis Cards (DL vs ML)
+    doc.setFontSize(8.0);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("COHORT BREAKDOWN: DEEP LEARNING VS. CLASSICAL MACHINE LEARNING", M, y);
+    y += 4;
+
+    const cardW = (usableW - 5) / 2;
+    const cardH = 24;
+
+    // Card 1: Deep Learning
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(M, y, cardW, cardH, 1.2, 1.2, "FD");
+
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(61, 85, 230);
+    doc.text("DEEP LEARNING COHORT (3 MODELS)", M + 4, y + 4.8);
+
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    const dlArchLines = doc.splitTextToSize("Architectures: 1D-CNN, BiLSTM, CNN-LSTM", cardW - 8);
+    doc.text(dlArchLines, M + 4, y + 9.2);
+
+    doc.setFontSize(7.0);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Consensus: ${dlSummary.consensus}`, M + 4, y + 14.8);
+
+    doc.setFontSize(6.6);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      `Agreement: ${dlSummary.count}/3 (${(dlSummary.agreePct * 100).toFixed(0)}%) · Mean Model Score: ${(dlSummary.avgConf * 100).toFixed(1)}%`,
+      M + 4,
+      y + 19.5,
+    );
+
+    // Card 2: Classical ML
+    const mlCardX = M + cardW + 5;
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(mlCardX, y, cardW, cardH, 1.2, 1.2, "FD");
+
+    doc.setFontSize(7.2);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(15, 157, 138);
+    doc.text("CLASSICAL ML COHORT (5 MODELS)", mlCardX + 4, y + 4.8);
+
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    const mlArchLines = doc.splitTextToSize("Estimators: Random Forest, XGBoost, KNN, SVM, LogReg", cardW - 8);
+    doc.text(mlArchLines, mlCardX + 4, y + 9.2);
+
+    doc.setFontSize(7.0);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text(`Consensus: ${mlSummary.consensus}`, mlCardX + 4, y + 14.8);
+
+    doc.setFontSize(6.6);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(71, 85, 105);
+    doc.text(
+      `Agreement: ${mlSummary.count}/5 (${(mlSummary.agreePct * 100).toFixed(0)}%) · Mean Model Score: ${(mlSummary.avgConf * 100).toFixed(1)}%`,
+      mlCardX + 4,
+      y + 19.5,
+    );
+
+    y += cardH + 3.5;
+
+    // Concordance Notification Strip (Dynamically Sized & Wrapped)
+    const bannerColor = isConcordant ? [16, 185, 129] : [245, 158, 11];
+    const bannerBg = isConcordant ? [236, 253, 245] : [255, 251, 235];
+    const bannerText = isConcordant
+      ? `Deep Learning and Classical ML cohort votes both select "${dlSummary.consensus}".`
+      : `The cohort votes differ: Deep Learning selects "${dlSummary.consensus}" and Classical ML selects "${mlSummary.consensus}".`;
+
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "bold");
+    const bannerLines = doc.splitTextToSize(bannerText, usableW - 8);
+    const confStripH = Math.max(6.5, 4 + bannerLines.length * 3.4);
+
+    doc.setFillColor(bannerBg[0], bannerBg[1], bannerBg[2]);
+    doc.setDrawColor(bannerColor[0], bannerColor[1], bannerColor[2]);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(M, y, usableW, confStripH, 1, 1, "FD");
+
+    doc.setTextColor(isConcordant ? 4 : 180, isConcordant ? 120 : 83, isConcordant ? 87 : 9);
+    doc.text(bannerLines, M + 4, y + 4.2);
+
+    y += confStripH + 4.5;
+
+    // ── Section 4: Research Methodology & Architecture Specifications ────────
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("4. RESEARCH METHODOLOGY & SYSTEM ARCHITECTURE (VIVA REFERENCE)", M, y);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.line(M, y + 2, W - M, y + 2);
+    y += 5.5;
+
+    const colWidth = (usableW - 8) / 2;
+    const col1Items = [
+      ["Benchmark", "MIT-BIH Arrhythmia Database (PhysioNet)"],
+      ["Input Shape", "187 normalized amplitude points per beat"],
+      ["Sampling", "360 Hz (standard Lead II electrocardiogram)"],
+      ["Taxonomy", "AAMI 5-Class: N, S, V, F, Q standard"],
+      ["Balancing", "SMOTE synthetic oversampling in training"],
+      ["Signal Proc.", "Adaptive centroid & min-max amplitude scaling"],
+    ];
+
+    const col2Items = [
+      ["Deep Learning", "1D-CNN, BiLSTM, CNN-LSTM Hybrid (3 models)"],
+      ["Classical ML", "Random Forest (100), XGBoost, KNN, SVM, LogReg (5 models)"],
+      ["Class Decision", "Highest arithmetic mean class score (soft voting); ties follow N, S, V, F, Q order"],
+      ["Class Scores", "Arithmetic mean of available model probability distributions"],
+      ["Model Agreement Tier", "High (>=87.5% agreement), Moderate (>=62.5% and <87.5%), Low (<62.5%)"],
+      ["Explainability", "10-sample sliding occlusion perturbation sensitivity map"],
+    ];
+
+    // Measure required height dynamically
+    doc.setFontSize(6.5);
+    let col1Height = 8;
+    col1Items.forEach(([label, val]) => {
+      const fullText = `• ${label}: ${val}`;
+      const lines = doc.splitTextToSize(fullText, colWidth - 4);
+      col1Height += lines.length * 3.4 + 1.2;
+    });
+
+    let col2Height = 8;
+    col2Items.forEach(([label, val]) => {
+      const fullText = `• ${label}: ${val}`;
+      const lines = doc.splitTextToSize(fullText, colWidth - 4);
+      col2Height += lines.length * 3.4 + 1.2;
+    });
+
+    const methH = Math.max(col1Height, col2Height) + 3;
+
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(M, y, usableW, methH, 1.2, 1.2, "FD");
+
+    // Render Left Column
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("DATASET & PREPROCESSING SPECIFICATION", M + 4, y + 5);
+
+    let curY1 = y + 9.5;
+    col1Items.forEach(([label, val]) => {
+      const fullText = `• ${label}: ${val}`;
+      const lines = doc.splitTextToSize(fullText, colWidth - 4);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(lines, M + 4, curY1);
+      curY1 += lines.length * 3.4 + 1.2;
+    });
+
+    // Render Right Column
+    const col2X = M + colWidth + 6;
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("ENSEMBLE PIPELINE & AUDIT PARAMETERS", col2X, y + 5);
+
+    let curY2 = y + 9.5;
+    col2Items.forEach(([label, val]) => {
+      const fullText = `• ${label}: ${val}`;
+      const lines = doc.splitTextToSize(fullText, colWidth - 4);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(lines, col2X, curY2);
+      curY2 += lines.length * 3.4 + 1.2;
+    });
+
+    y += methH + 4;
+
+    // ── Section 5: Regulatory Disclaimer & Attestation Block ─────────────────
+    const discText =
+      "EchoVote is an artificial intelligence research platform developed as an academic capstone investigation at BMSCE Bengaluru for clinical decision-support evaluation. It is NOT certified as a medical device by the US FDA, CE, or CDSCO. Model predictions, sensitivity maps, and ensemble scores are intended solely for investigational decision support and academic research. Treatment, diagnosis, or clinical decisions must be made by a licensed, board-certified physician.";
+    doc.setFontSize(5.9);
+    doc.setFont("helvetica", "normal");
+    const discLines = doc.splitTextToSize(discText, usableW - 8);
+    const discH = Math.max(16, 7 + discLines.length * 3.2);
+
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(M, y, usableW, discH, 1.2, 1.2, "FD");
+
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("REGULATORY DISCLAIMER & INVESTIGATIONAL USE NOTICE", M + 4, y + 4.2);
+
+    doc.setFontSize(5.9);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(100, 116, 139);
+    doc.text(discLines, M + 4, y + 8.2);
+
+    y += discH + 4;
+
+    // Clinician Verification / Audit Sign-off Fields
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+
+    const signW = (usableW - 8) / 3;
+    const signH = 14;
+
+    // Field 1
+    doc.roundedRect(M, y, signW, signH, 1, 1, "S");
+    doc.setFontSize(5.8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(100, 116, 139);
+    doc.text("REVIEWING CLINICIAN / EXAMINER", M + 3, y + 4);
+
+    // Field 2
+    doc.roundedRect(M + signW + 4, y, signW, signH, 1, 1, "S");
+    doc.text("INSTITUTION / DEPARTMENT", M + signW + 7, y + 4);
+
+    // Field 3
+    doc.roundedRect(M + (signW + 4) * 2, y, signW, signH, 1, 1, "S");
+    doc.text("VERIFICATION DATE & SIGNATURE", M + (signW + 4) * 2 + 3, y + 4);
+
+    // Page 2 Footer
+    doc.setFontSize(6.6);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(148, 163, 184);
+    doc.text(
+      "EchoVote AI Cardiac Decision Support · BMSCE Bengaluru Capstone Project · Model Architecture: v2.4.1 · Page 2 of 2",
+      W / 2,
+      288,
+      { align: "center" },
+    );
+
+    doc.save(`EchoVote_Clinical_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   const tabs = ["overview", "disease-chance", "all-models"];
   const tabLabels = {
     overview: "Overview",
-    "disease-chance": "Disease Probability",
+    "disease-chance": "Ensemble Scores",
     "all-models": "All Models",
   };
 
@@ -464,13 +908,13 @@ export default function ResultsPanel({ data }) {
                 {consensus}
               </div>
               <div style={s.verdictMeta}>
-                {counts[consensus]}/{valid.length} models agree &nbsp;·&nbsp;
-                {(avgConf * 100).toFixed(1)}% avg confidence
+                {counts[consensus] || 0}/{valid.length} model votes for this class
+                &nbsp;·&nbsp; {(selectedClassScore * 100).toFixed(1)}% mean score
               </div>
             </div>
             <div style={{ textAlign: "right" }}>
               <div style={{ ...s.bigPct, color: sev.text }}>
-                {(ensProbs[topDiseaseIdx] * 100).toFixed(1)}%
+                {(selectedClassScore * 100).toFixed(1)}%
               </div>
               <div
                 style={{
@@ -943,9 +1387,9 @@ export default function ResultsPanel({ data }) {
           <div style={s.statsRow} className="results-stats">
             {[
               { v: valid.length, l: "Models Run" },
-              { v: (avgConf * 100).toFixed(0) + "%", l: "Avg Confidence" },
+              { v: (selectedClassScore * 100).toFixed(0) + "%", l: "Mean Class Score" },
               {
-                v: ((counts[consensus] / valid.length) * 100).toFixed(0) + "%",
+                v: (((counts[consensus] || 0) / (valid.length || 1)) * 100).toFixed(0) + "%",
                 l: "Agreement",
               },
               {
@@ -967,9 +1411,9 @@ export default function ResultsPanel({ data }) {
         <div style={s.col}>
           <div style={s.card} className="card-hover">
             <div style={s.cardHead}>
-              <span style={s.cardTitle}>Ensemble Disease Probability</span>
+              <span style={s.cardTitle}>Ensemble Class Scores (Soft Voting)</span>
               <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                Averaged across {valid.length} models
+                Averaged class scores across {valid.length} models (uncalibrated model outputs)
               </span>
             </div>
             {CLASSES.map((cls, i) => {
@@ -1032,7 +1476,7 @@ export default function ResultsPanel({ data }) {
           </div>
 
           <div style={s.card} className="card-hover">
-            <div style={s.cardTitle}>Per-Model Probabilities</div>
+            <div style={s.cardTitle}>Per-Model Output Distributions</div>
             <div style={{ overflowX: "auto", marginTop: 14 }}>
               <table style={s.table}>
                 <thead>
@@ -1086,6 +1530,28 @@ export default function ResultsPanel({ data }) {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div
+              style={{
+                marginTop: 18,
+                padding: "12px 16px",
+                background: "var(--bg-elevated)",
+                borderRadius: "var(--r-md)",
+                border: "1px solid var(--border)",
+                fontSize: 12,
+                color: "var(--text-muted)",
+                lineHeight: 1.6,
+              }}
+            >
+              <strong style={{ color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
+                💡 Methodological Note on Calibration &amp; Scoring:
+              </strong>
+              Ensemble scores represent the unweighted arithmetic mean of individual model outputs across the 8
+              estimators (soft voting). These uncalibrated averaged model scores are not measured clinical confidence or
+              calibrated disease probabilities. Because post-hoc calibration (such as Platt scaling, isotonic regression,
+              or temperature scaling) has not been performed on an independent cohort, interpret them as relative model
+              outputs rather than empirical epidemiological risk.
             </div>
           </div>
         </div>
@@ -1222,7 +1688,7 @@ export default function ResultsPanel({ data }) {
 
       {/* ── Clinical Summary ── */}
       {(() => {
-        const agreePct = counts[consensus] / valid.length;
+        const agreePct = (counts[consensus] || 0) / (valid.length || 1);
         const consensusLevel =
           agreePct >= 0.875 ? "HIGH" : agreePct >= 0.625 ? "MODERATE" : "LOW";
         const consensusColor =
@@ -1259,53 +1725,11 @@ export default function ResultsPanel({ data }) {
             dlPreds.filter(([, r]) => r.prediction === dlC).length
           : 0;
 
-        // Recommendation logic
-        let recIcon, recColor, recBg, recBorder, recommendation;
-        if (consensus === "Ventricular (V)") {
-          recIcon = "🚨";
-          recColor = "#c2362b";
-          recBg = "rgba(194,54,43,0.06)";
-          recBorder = "#dc4a3e";
-          recommendation =
-            "Urgent clinical review required. Ventricular arrhythmia detected — consult a cardiologist immediately.";
-        } else if (consensus === "Normal (N)") {
-          recIcon = "✅";
-          recColor = "#0f8a79";
-          recBg = "rgba(15,138,121,0.06)";
-          recBorder = "#0f9d8a";
-          recommendation =
-            consensusLevel === "HIGH"
-              ? "High-confidence normal sinus rhythm. Routine follow-up as per clinical protocol."
-              : "Normal sinus rhythm detected. Moderate model agreement — routine follow-up recommended.";
-        } else if (consensusLevel === "LOW" || dlMlDisagree) {
-          recIcon = "⚠️";
-          recColor = "#b8650f";
-          recBg = "rgba(184,101,15,0.06)";
-          recBorder = "#d98324";
-          recommendation =
-            "Clinical review advised. Low model consensus or DL/ML disagreement — manual cardiologist interpretation recommended.";
-        } else if (consensus === "Supraventricular (S)") {
-          recIcon = "⚠️";
-          recColor = "#2b44d6";
-          recBg = "rgba(43,68,214,0.06)";
-          recBorder = "#2b44d6";
-          recommendation =
-            "Cardiology referral recommended. Consider Holter monitoring and rate control evaluation.";
-        } else if (consensus === "Fusion (F)") {
-          recIcon = "⚠️";
-          recColor = "#b8650f";
-          recBg = "rgba(184,101,15,0.06)";
-          recBorder = "#d98324";
-          recommendation =
-            "Fusion beat detected. Clinical review recommended to assess underlying rhythm.";
-        } else {
-          recIcon = "🔍";
-          recColor = "#5b4bd6";
-          recBg = "rgba(91,75,214,0.06)";
-          recBorder = "#7564f0";
-          recommendation =
-            "Unclassifiable morphology. Manual review by a qualified cardiologist is required.";
-        }
+        const recIcon = "ℹ️";
+        const recColor = "#2b44d6";
+        const recBg = "rgba(43,68,214,0.06)";
+        const recBorder = "#2b44d6";
+        const recommendation = `Predicted ECG beat class: ${consensus}. Interpret this model output alongside the ECG and clinical context.`;
 
         return (
           <div
@@ -1337,7 +1761,7 @@ export default function ResultsPanel({ data }) {
                   letterSpacing: "1px",
                 }}
               >
-                Clinical Summary
+                Model Output & Interpretation
               </span>
             </div>
 
@@ -1368,7 +1792,7 @@ export default function ResultsPanel({ data }) {
                     letterSpacing: "0.8px",
                   }}
                 >
-                  Final Prediction
+                  Predicted Beat Class
                 </span>
                 <span
                   style={{ fontSize: 22, fontWeight: 800, color: recColor }}
@@ -1382,7 +1806,7 @@ export default function ResultsPanel({ data }) {
                     color: "var(--text-secondary)",
                   }}
                 >
-                  — {(avgConf * 100).toFixed(1)}% avg confidence
+                  — {(selectedClassScore * 100).toFixed(1)}% mean class score
                 </span>
               </div>
 
@@ -1445,18 +1869,18 @@ export default function ResultsPanel({ data }) {
                   {
                     label: "Models Agree",
                     value: `${counts[consensus]}/${valid.length}`,
-                    sub: `${((counts[consensus] / valid.length) * 100).toFixed(0)}%`,
+                    sub: `${(((counts[consensus] || 0) / (valid.length || 1)) * 100).toFixed(0)}%`,
                   },
                   {
-                    label: "Consensus",
+                    label: "Model Agreement Tier",
                     value: consensusLevel,
                     sub: `${(agreePct * 100).toFixed(0)}% agreement`,
                     color: consensusColor,
                   },
                   {
-                    label: "Ensemble Prob",
-                    value: `${(ensProbs[topDiseaseIdx] * 100).toFixed(1)}%`,
-                    sub: "avg across models",
+                    label: "Top Mean Class Score",
+                    value: `${(selectedClassScore * 100).toFixed(1)}%`,
+                    sub: "mean across models",
                   },
                 ].map(({ label, value, sub, color }) => (
                   <div
