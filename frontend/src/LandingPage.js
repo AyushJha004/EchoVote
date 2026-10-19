@@ -28,14 +28,14 @@ function Logo({ onClick }) {
 const features = [
   { k: "01", t: "8-model ensemble", d: "Three deep learning and five classical ML models read the same signal. You see where they agree — and where they don't." },
   { k: "02", t: "Beat-level classes", d: "Every beat sorted into N, S, V, F and Q classes with confidence scores you can inspect." },
-  { k: "03", t: "Explainable heatmaps", d: "See which part of the waveform drove each prediction, overlaid directly on the trace." },
+  { k: "03", t: "Explainable heatmaps", d: "See which parts of a beat most influenced the prediction, shown on the waveform." },
 ];
 
 const stats = [
   { v: "8", l: "AI Models" },
   { v: "5", l: "Beat classes" },
-  { v: "<2s", l: "Per recording" },
-  { v: "98%+", l: "Test accuracy" },
+  { v: "3", l: "Input types" },
+  { v: "2-page", l: "PDF report" },
 ];
 
 export default function LandingPage({ onLogin, onSignup }) {
@@ -61,7 +61,10 @@ export default function LandingPage({ onLogin, onSignup }) {
             <em style={{ color: "var(--lp-primary)", fontStyle: "normal" }}>not just the rhythm.</em>
           </h1>
           <p style={s.heroSub}>
-            Upload an ECG and EchoVote classifies each beat with eight independent AI models, then shows you exactly why.
+            Upload an ECG and EchoVote classifies each beat with eight AI models, then highlights the parts of the waveform that influenced the result.
+          </p>
+          <p style={{ margin: "-4px 0 20px", fontSize: 13, color: "var(--lp-muted)" }}>
+            Research prototype. Not a certified medical device; it does not provide a diagnosis.
           </p>
           <div style={s.heroBtns}>
             <button onClick={onSignup} style={s.btnPrimary} className="lp-glow">Create free account</button>

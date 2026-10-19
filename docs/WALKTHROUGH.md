@@ -30,13 +30,12 @@ The public front page, with **Log in** and **Sign up**. Accounts are real: regis
 to the backend (`/auth/*`, `backend/auth.py`) and are stored in a SQLite database that persists in a Docker volume.
 After logging in the user lands on the Analyze page.
 
-The animated ECG strip is decorative. The four figures under it are static text written into the page
-(`frontend/src/LandingPage.js`), not live measurements. Read them with these notes:
-* "8" models and "5" beat classes are accurate.
-* "<2s per recording" is optimistic. In practice one beat takes a few seconds, and a photographed strip with many beats
-  takes roughly 1 to 2 minutes because every beat runs through all 8 models.
-* "98%+ test accuracy" refers to beat-level accuracy on the MIT-BIH test set, where test and training beats come from the
-  same patients. It is not a measure of accuracy on new patients.
+The animated ECG strip is decorative. The four figures under it (8 AI models, 5 beat classes, 3 input types, a 2-page
+PDF report) describe features of the app and are static text in `frontend/src/LandingPage.js`. The screenshot above was
+taken before this wording was updated: it showed "&lt;2s per recording" and "98%+ test accuracy", which were removed
+because a single beat takes a few seconds, a photographed strip takes 1 to 2 minutes, and the 98% was a beat-level figure
+on MIT-BIH data (test and training beats from the same patients) that does not describe accuracy on new patients. A short
+"research prototype, not a medical device" line was added under the headline.
 
 ## 2. Analyze: choosing an input
 
