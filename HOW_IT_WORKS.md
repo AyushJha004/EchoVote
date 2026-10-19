@@ -7,6 +7,8 @@ arrhythmia screen is decided, and how the sensitivity heatmap is computed.
 > **Not a medical device.** EchoVote is an academic capstone project (BMSCE Bengaluru). It is not certified by
 > the FDA, CE or CDSCO and does not provide a diagnosis. A clinician must confirm every finding.
 
+For an annotated tour with screenshots of every screen, see [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md).
+
 ---
 
 ## 1. Architecture

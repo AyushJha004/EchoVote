@@ -3,7 +3,7 @@
 > AI-powered cardiac diagnosis using an 8-model ensemble (3 Deep Learning + 5 Machine Learning).  
 > Built for doctors and researchers. Capstone research — BMSCE Bengaluru.
 
-**How it works:** see [HOW_IT_WORKS.md](HOW_IT_WORKS.md) for how images are read, the model and screening logic, and how the sensitivity heatmap is computed.
+**How it works:** see [HOW_IT_WORKS.md](HOW_IT_WORKS.md) for how images are read, the model and screening logic, and how the sensitivity heatmap is computed. A screen-by-screen tour with screenshots is in [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md).
 
 ---
 
