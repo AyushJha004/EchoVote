@@ -66,7 +66,7 @@ export default function ResultsPanel({ data }) {
   const [sensitivity, setSensitivity] = useState(null);
   const [pertLoading, setPertLoading] = useState(false);
   const [pertError, setPertError] = useState(null);
-  const { signal, predictions, ensemble_probs, source_image } = data;
+  const { signal, predictions, ensemble_probs, source_image, arrhythmia, segmentation } = data;
 
   const valid = Object.entries(predictions).filter(
     ([, r]) => r.prediction && r.prediction !== "Error",
@@ -129,38 +129,26 @@ export default function ResultsPanel({ data }) {
 
   const REPORT_SCOPE_NOTE =
     "This report summarizes the model's classification of an isolated 187-sample beat segment. ECG morphology, rhythm, rate, and conduction intervals have not been independently measured by this system.";
-  const REPORT_INTERPRETATION_NOTE =
-    "This model output requires interpretation alongside the ECG and clinical context.";
-
-  const CLINICAL_DEFINITIONS = {
-    "Normal (N)": {
-      fullName: "Predicted ECG Beat Class: Normal (N)",
-      aamiCode: "AAMI EC57 Class N · Isolated Beat Evaluation",
-      badgeBg: [15, 157, 138],
-    },
-    "Supraventricular (S)": {
-      fullName: "Predicted ECG Beat Class: Supraventricular Ectopic (S)",
-      aamiCode: "AAMI EC57 Class S · Atrial / Nodal Ectopic Beat",
-      badgeBg: [61, 85, 230],
-    },
-    "Ventricular (V)": {
-      fullName: "Predicted ECG Beat Class: Ventricular Ectopic (V)",
-      aamiCode: "AAMI EC57 Class V · Ventricular Ectopic Beat",
-      badgeBg: [194, 54, 43],
-    },
-    "Fusion (F)": {
-      fullName: "Predicted ECG Beat Class: Fusion Beat (F)",
-      aamiCode: "AAMI EC57 Class F · Hybrid Activation",
-      badgeBg: [217, 131, 36],
-    },
-    "Unclassifiable (Q)": {
-      fullName: "Predicted ECG Beat Class: Unclassifiable (Q)",
-      aamiCode: "AAMI EC57 Class Q · Indeterminate Morphology",
-      badgeBg: [91, 75, 214],
-    }
-  };
-
-  const exportPDF = () => {
+  const exportPDF = async () => {
+    // Downscale the uploaded photo so the PDF stays small.
+    const photo = source_image
+      ? await new Promise((resolve) => {
+          const im = new Image();
+          im.onload = () => {
+            const scale = Math.min(1, 1400 / im.naturalWidth);
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.round(im.naturalWidth * scale);
+            canvas.height = Math.round(im.naturalHeight * scale);
+            const ctx = canvas.getContext("2d");
+            ctx.fillStyle = "#ffffff";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(im, 0, 0, canvas.width, canvas.height);
+            resolve({ data: canvas.toDataURL("image/jpeg", 0.85), w: canvas.width, h: canvas.height });
+          };
+          im.onerror = () => resolve(null);
+          im.src = source_image;
+        })
+      : null;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const W = 210,
       H = 297,
@@ -184,7 +172,6 @@ export default function ResultsPanel({ data }) {
       ];
     };
 
-    const clin = CLINICAL_DEFINITIONS[consensus] || CLINICAL_DEFINITIONS["Normal (N)"];
     const [hr, hg, hb] = hex2rgb(sev.border);
 
     // Cohort calculations for DL and ML
@@ -212,185 +199,253 @@ export default function ResultsPanel({ data }) {
       agreePct >= 0.875 ? "High" : agreePct >= 0.625 ? "Moderate" : "Low";
 
     // =========================================================================
-    // PAGE 1: MODEL OUTPUT & CLASS SCORE DISTRIBUTION
+    // PAGE 1: CLINICAL SUMMARY (for the reviewing clinician)
     // =========================================================================
+    const detected = Boolean(arrhythmia?.detected);
+    const [ar, ag, ab] = hex2rgb(detected ? "#c2362b" : "#0f9d8a");
+    const PLAIN_MEANING = {
+      "Normal (N)":
+        "The beat's shape resembles a normal heartbeat. No abnormal beat type was favoured by the models.",
+      "Supraventricular (S)":
+        "An early beat that starts above the ventricles (atria or AV node). It is often benign when isolated; correlate with symptoms and the full ECG.",
+      "Ventricular (V)":
+        "An early beat that starts in the ventricles (a premature ventricular contraction). Its significance depends on frequency and context; prompt clinician review is advised.",
+      "Fusion (F)":
+        "A blend of a normal beat and a ventricular beat. Clinician review is advised.",
+      "Unclassifiable (Q)":
+        "The beat could not be classified, which can happen with poor signal quality or paced rhythms. Manual review is needed.",
+    };
+    const NEXT_STEPS = detected
+      ? [
+          "Review the complete ECG strip and rhythm, not this single beat alone.",
+          "Correlate with symptoms, history and medications.",
+          "Confirm with a clinician before any decision; consider repeat or extended monitoring if clinically indicated.",
+        ]
+      : [
+          "No abnormal beat was flagged in this single beat.",
+          "A normal result for one beat does not exclude arrhythmia elsewhere in the recording.",
+          "Interpret alongside the full ECG, symptoms and clinical history.",
+        ];
+
+    let sectionNo = 0;
+    const sectionHead = (label) => {
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text(`${++sectionNo}. ${label}`, M, y);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.35);
+      doc.line(M, y + 2, W - M, y + 2);
+      y += 6.5;
+    };
 
     // ── Header bar ───────────────────────────────────────────────────────────
     doc.setFillColor(18, 24, 38);
     doc.rect(0, 0, W, 22, "F");
-
-    // Accent strip under header
-    doc.setFillColor(hr, hg, hb);
+    doc.setFillColor(ar, ag, ab);
     doc.rect(0, 21.2, W, 0.8, "F");
 
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(13);
     doc.setFont("helvetica", "bold");
-    doc.text("EchoVote — ECG Beat-Class & Ensemble Report", M, 11);
+    doc.text("EchoVote - ECG Beat Screening Report", M, 11);
 
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(160, 174, 192);
-    doc.text("Lead II Cardiac Arrhythmia Decision Support · 8-Model Ensemble Architecture", M, 17);
+    doc.text("Clinical summary - decision support for the reviewing clinician", M, 17);
 
     doc.setFontSize(7);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(203, 213, 225);
-    doc.text("CONFIDENTIAL MEDICAL DECISION SUPPORT", W - M, 10.5, { align: "right" });
-
-    doc.setFontSize(7);
+    doc.text("NOT A DIAGNOSIS", W - M, 10.5, { align: "right" });
     doc.setFont("helvetica", "normal");
     doc.setTextColor(160, 174, 192);
-    doc.text(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()} · Page 1 of 2`, W - M, 16.5, {
-      align: "right",
-    });
+    doc.text(
+      `Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()} - Page 1 of 2`,
+      W - M,
+      16.5,
+      { align: "right" },
+    );
 
     let y = 29;
 
-    // ── Section 1: Model Output & Executive Summary ──────────────────────────
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text("1. ALGORITHMIC BEAT-CLASS PREDICTION", M, y);
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.35);
-    doc.line(M, y + 2, W - M, y + 2);
-    y += 6.5;
-
-    // Primary Classification Banner Card (Dynamically Sized)
-    const [badgeR, badgeG, badgeB] = clin.badgeBg;
-    const badgeW = 62;
-    const badgeH = 6.2;
-    const badgeX = W - M - badgeW - 3;
-    const badgeY = y + 3.5;
-
-    // Measure wrapped diagnosis title
-    doc.setFontSize(12.5);
-    doc.setFont("helvetica", "bold");
-    const titleLines = doc.splitTextToSize(clin.fullName, usableW - badgeW - 14);
-
-    // Meta details formatted in 2 clean wrapped lines
-    const metaLine1 = `${clin.aamiCode}   |   Model Votes for Predicted Class: ${counts[consensus] || 0}/${valid.length} (${(agreePct * 100).toFixed(0)}%)   |   Mean Class Score: ${(selectedClassScore * 100).toFixed(1)}%`;
-    const metaLine2 = `Cohort Agreement: ${concordanceText}   |   Model Agreement Tier: ${agreementTier}`;
-    doc.setFontSize(7.4);
-    doc.setFont("helvetica", "normal");
-    const metaLines1 = doc.splitTextToSize(metaLine1, usableW - 14);
-    const metaLines2 = doc.splitTextToSize(metaLine2, usableW - 14);
-
-    const bannerH = Math.max(30, 14 + titleLines.length * 4.8 + (metaLines1.length + metaLines2.length) * 3.5);
-
+    // ── 1. Result ────────────────────────────────────────────────────────────
+    sectionHead("RESULT");
+    const screenH = arrhythmia?.irregular_rhythm ? 32 : 27;
     doc.setFillColor(250, 251, 254);
-    doc.setDrawColor(hr, hg, hb);
+    doc.setDrawColor(ar, ag, ab);
     doc.setLineWidth(0.6);
-    doc.roundedRect(M, y, usableW, bannerH, 1.5, 1.5, "FD");
+    doc.roundedRect(M, y, usableW, screenH, 1.5, 1.5, "FD");
+    doc.setFillColor(ar, ag, ab);
+    doc.rect(M, y, 3.5, screenH, "F");
 
-    // Left accent block
-    doc.setFillColor(hr, hg, hb);
-    doc.rect(M, y, 3.5, bannerH, "F");
-
-    // Model output badge (pill)
-    doc.setFillColor(badgeR, badgeG, badgeB);
-    doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1.2, 1.2, "F");
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(6.8);
-    doc.setFont("helvetica", "bold");
-    doc.text("MODEL OUTPUT", badgeX + badgeW / 2, badgeY + 4.3, { align: "center" });
-
-    // Category label
     doc.setFontSize(7.2);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(100, 116, 139);
-    doc.text("PRIMARY ALGORITHMIC BEAT PREDICTION (AAMI EC57):", M + 6.5, y + 5.5);
+    doc.text("ARRHYTHMIA SCREEN", M + 7, y + 6);
 
-    // Predicted beat class (multiline safe)
-    doc.setFontSize(12.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(hr, hg, hb);
-    let titleY = y + 12;
-    doc.text(titleLines, M + 6.5, titleY);
-    titleY += titleLines.length * 4.8;
+    doc.setFontSize(15);
+    doc.setTextColor(ar, ag, ab);
+    doc.text(
+      !arrhythmia
+        ? "Screen unavailable"
+        : detected
+          ? "Possible arrhythmia detected"
+          : "No arrhythmia detected in this beat",
+      M + 7,
+      y + 14.5,
+    );
 
-    // Metadata lines (multiline safe)
-    doc.setFontSize(7.4);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(51, 65, 85);
-    doc.text(metaLines1, M + 6.5, titleY);
-    titleY += metaLines1.length * 3.5;
-    doc.text(metaLines2, M + 6.5, titleY);
+    if (arrhythmia?.beats_total > 1) {
+      doc.setFontSize(7.4);
+      doc.text(
+        `${arrhythmia.beats_flagged} of ${arrhythmia.beats_total} beats in the uploaded strip were flagged.`,
+        M + 7,
+        y + 24.8,
+      );
+      doc.setFontSize(8);
+    }
+    if (arrhythmia?.irregular_rhythm) {
+      doc.setFontSize(7.4);
+      doc.text(
+        "Beat-to-beat intervals are irregular - this can accompany rhythm disorders; confirm on the full ECG.",
+        M + 7,
+        y + 29.2,
+      );
+      doc.setFontSize(8);
+    }
+    if (arrhythmia) {
+      doc.text(
+        `Estimated probability that this beat is abnormal: ${(arrhythmia.p_abnormal * 100).toFixed(0)}% (flagged when at least ${(arrhythmia.threshold * 100).toFixed(0)}%).`,
+        M + 7,
+        y + 21,
+      );
+    }
+    y += screenH + 5;
 
-    y += bannerH + 4.5;
-
-    // Input scope and measurement limitations
-    doc.setFontSize(7.2);
+    // ── 2. Most likely beat type ─────────────────────────────────────────────
+    sectionHead("MOST LIKELY BEAT TYPE");
+    const meaning = PLAIN_MEANING[consensus] || "";
+    doc.setFontSize(8);
     doc.setFont("helvetica", "normal");
-    const obsLines = doc.splitTextToSize(REPORT_SCOPE_NOTE, usableW - 12);
-    const obsH = Math.max(22, 10 + obsLines.length * 3.7);
-
-    doc.setFillColor(248, 250, 252);
+    const meaningLines = doc.splitTextToSize(meaning, usableW - 14);
+    const typeH = 17 + meaningLines.length * 3.9;
+    const [hr2, hg2, hb2] = hex2rgb(COLOR[consensus] || "#5b4bd6");
+    doc.setFillColor(250, 251, 254);
     doc.setDrawColor(226, 232, 240);
     doc.setLineWidth(0.3);
-    doc.roundedRect(M, y, usableW, obsH, 1.5, 1.5, "FD");
+    doc.roundedRect(M, y, usableW, typeH, 1.5, 1.5, "FD");
+    doc.setFillColor(hr2, hg2, hb2);
+    doc.rect(M, y, 3.5, typeH, "F");
 
-    doc.setFontSize(7.8);
+    doc.setFontSize(12.5);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text("INPUT SCOPE & MEASUREMENT LIMITS", M + 5, y + 5.5);
+    doc.setTextColor(hr2, hg2, hb2);
+    doc.text(consensus === "Unknown" ? "Unknown" : consensus, M + 7, y + 7.5);
 
-    doc.setFontSize(7.2);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    doc.text(obsLines, M + 5, y + 11.2);
-
-    y += obsH + 4;
-
-    // Neutral interpretation note
-    doc.setFontSize(7.0);
-    doc.setFont("helvetica", "normal");
-    const actionLines = doc.splitTextToSize(REPORT_INTERPRETATION_NOTE, usableW - 14);
-    const actH = Math.max(20, 15 + actionLines.length * 3.7);
-
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.35);
-    doc.roundedRect(M, y, usableW, actH, 1.5, 1.5, "FD");
-
-    doc.setFillColor(hr, hg, hb);
-    doc.rect(M, y, 2.5, actH, "F");
-
-    doc.setFontSize(7.8);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(hr, hg, hb);
-    doc.text("INTERPRETATION NOTE", M + 5, y + 5.5);
-
-    doc.setFontSize(7.0);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(51, 65, 85);
-    doc.text(actionLines, M + 5, y + 11.2);
-
-    y += actH + 5.5;
-
-    // ── Section 2: Multi-Model Ensemble Consensus (Class Scores) ─────────────
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text("2. ENSEMBLE CLASS SCORES", M, y);
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.35);
-    doc.line(M, y + 2, W - M, y + 2);
-    y += 5.5;
-
-    doc.setFontSize(7.2);
+    doc.setFontSize(7.4);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(100, 116, 139);
-    const scoreMethodLines = doc.splitTextToSize(
-      "The predicted class is the class with the highest arithmetic mean of the valid models' class scores. Model vote counts are shown separately as agreement; scores are uncalibrated model outputs:",
-      usableW,
+    doc.text(
+      `${counts[consensus] || 0} of ${valid.length} models agree  -  ensemble score ${(selectedClassScore * 100).toFixed(0)}%`,
+      W - M - 4,
+      y + 7.5,
+      { align: "right" },
     );
-    doc.text(scoreMethodLines, M, y);
-    y += scoreMethodLines.length * 3.5 + 1;
 
-    // Class Score Bars
-    const barW = usableW - 88;
+    doc.setFontSize(8);
+    doc.setTextColor(51, 65, 85);
+    doc.text(meaningLines, M + 7, y + 13.5);
+    y += typeH + 5;
+
+    // ── Uploaded ECG image (photo uploads only) ─────────────────────────────
+    if (photo) {
+      sectionHead("UPLOADED ECG IMAGE");
+      const boxH = 34;
+      doc.setFillColor(255, 255, 255);
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.3);
+      doc.roundedRect(M, y, usableW, boxH, 1.2, 1.2, "FD");
+      const fit = Math.min((usableW - 4) / photo.w, (boxH - 4) / photo.h);
+      const iw = photo.w * fit;
+      const ih = photo.h * fit;
+      doc.addImage(photo.data, "JPEG", M + (usableW - iw) / 2, y + (boxH - ih) / 2, iw, ih);
+      y += boxH + 5;
+    }
+
+    // ── ECG beat ─────────────────────────────────────────────────────────────
+    sectionHead(photo ? "BEAT ANALYSED (EXTRACTED FROM THE IMAGE)" : "ECG BEAT ANALYSED");
+    const chartH = photo ? 34 : 42;
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(M, y, usableW, chartH, 1.2, 1.2, "FD");
+
+    const px = M + 3;
+    const pw = usableW - 6;
+    const py = y + 4;
+    const ph = chartH - 8;
+    // Beats cut from a strip are zero-padded to 187 samples; plot only the real part.
+    let n = (signal || []).length;
+    if (segmentation) {
+      while (n > 2 && signal[n - 1] === 0) n--;
+    }
+    if (n > 1) {
+      // light grid
+      doc.setDrawColor(241, 245, 249);
+      doc.setLineWidth(0.15);
+      for (let g = 0; g <= 10; g++) doc.line(px + (pw * g) / 10, py, px + (pw * g) / 10, py + ph);
+      for (let g = 0; g <= 4; g++) doc.line(px, py + (ph * g) / 4, px + pw, py + (ph * g) / 4);
+
+      // regions that most influenced the result (sensitivity map)
+      if (sensitivity) {
+        doc.setFillColor(254, 226, 226);
+        for (let i = 0; i < n; i += 10) {
+          const slice = sensitivity.slice(i, Math.min(i + 10, n));
+          const avg = slice.reduce((a, b) => a + b, 0) / (slice.length || 1);
+          if (avg >= 0.6) {
+            const x0 = px + (pw * i) / (n - 1);
+            const x1 = px + (pw * Math.min(i + 10, n - 1)) / (n - 1);
+            doc.rect(x0, py, x1 - x0, ph, "F");
+          }
+        }
+      }
+
+      const sMin = Math.min(...signal.slice(0, n));
+      const sMax = Math.max(...signal.slice(0, n));
+      const span = sMax - sMin || 1;
+      doc.setDrawColor(18, 24, 38);
+      doc.setLineWidth(0.45);
+      for (let i = 1; i < n; i++) {
+        doc.line(
+          px + (pw * (i - 1)) / (n - 1),
+          py + ph - ((signal[i - 1] - sMin) / span) * ph,
+          px + (pw * i) / (n - 1),
+          py + ph - ((signal[i] - sMin) / span) * ph,
+        );
+      }
+    }
+    y += chartH + 2.5;
+    doc.setFontSize(6.6);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100, 116, 139);
+    const beatNote = segmentation
+      ? `Beat ${segmentation.representative + 1} of ${segmentation.beats.length} cut from the strip (R peak to R peak, rescaled to the model's input format).`
+      : "Single beat (187 samples).";
+    doc.text(
+      `${beatNote} ${sensitivity ? "Shaded bands mark the segments that most influenced the result." : "Amplitude is normalised, not calibrated in mV."}`,
+      M,
+      y + 1.5,
+    );
+    y += 7;
+
+    // ── 4. Beat-type probabilities ───────────────────────────────────────────
+    sectionHead("BEAT-TYPE PROBABILITIES (ENSEMBLE)");
+    const barW = usableW - 70;
     CLASSES.forEach((cls, i) => {
       const score = ensProbs[i] || 0;
       const isSelected = cls === consensus;
@@ -401,69 +456,54 @@ export default function ResultsPanel({ data }) {
       doc.setTextColor(cr, cg, cb);
       doc.text(cls, M, y + 3.8);
 
-      // Track
       doc.setFillColor(241, 245, 249);
       doc.roundedRect(M + 46, y, barW, 4.8, 0.8, 0.8, "F");
-
-      // Fill
       if (score > 0.005) {
         doc.setFillColor(cr, cg, cb);
         doc.roundedRect(M + 46, y, Math.max(barW * score, 1.5), 4.8, 0.8, 0.8, "F");
       }
-
-      // Percentage
       doc.setFontSize(7.2);
-      doc.setFont("helvetica", isSelected ? "bold" : "normal");
-      doc.setTextColor(cr, cg, cb);
       doc.text(`${(score * 100).toFixed(1)}%`, M + 46 + barW + 3, y + 3.6);
-
-      // Plurality Vote / Primary Tag
-      if (isSelected) {
-        doc.setFillColor(cr, cg, cb);
-        doc.roundedRect(M + 46 + barW + 15, y + 0.3, 27, 4.2, 0.8, 0.8, "F");
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(5.5);
-        doc.setFont("helvetica", "bold");
-        doc.text("PREDICTED CLASS", M + 46 + barW + 28.5, y + 3.3, { align: "center" });
-      }
-
-      y += 6.5;
+      y += 6.3;
     });
-
     y += 3;
 
-    // Essential Technical & Calibration Note Callout (Dynamically Sized)
-    const noteText =
-      "Ensemble methodology: the predicted class is the class with the highest arithmetic mean score across valid model probability distributions (soft voting). Exact score ties follow the fixed order N, S, V, F, Q. The count of individual model predictions for the selected class is reported separately as model agreement; it does not select the class. Scores are uncalibrated model outputs, not measured clinical confidence or disease probabilities, and require interpretation alongside the ECG and clinical context.";
-    doc.setFontSize(6.6);
+    // ── 5. Suggested next steps ──────────────────────────────────────────────
+    sectionHead("SUGGESTED NEXT STEPS");
+    doc.setFontSize(7.8);
     doc.setFont("helvetica", "normal");
-    const noteLines = doc.splitTextToSize(noteText, usableW - 12);
-    const noteH = Math.max(22, 10 + noteLines.length * 3.4);
+    doc.setTextColor(51, 65, 85);
+    NEXT_STEPS.forEach((step) => {
+      const lines = doc.splitTextToSize(step, usableW - 8);
+      doc.text("-", M + 1, y + 3);
+      doc.text(lines, M + 5, y + 3);
+      y += lines.length * 3.9 + 1.4;
+    });
+    y += 3;
 
-    doc.setFillColor(248, 250, 252);
-    doc.setDrawColor(203, 213, 225);
-    doc.setLineWidth(0.4);
-    doc.roundedRect(M, y, usableW, noteH, 1.5, 1.5, "FD");
-
-    doc.setFillColor(100, 116, 139);
-    doc.rect(M, y, 2.5, noteH, "F");
-
-    doc.setFontSize(7.2);
+    // Short clinical disclaimer
+    const shortDisc =
+      "Research decision-support output from an academic capstone project (BMSCE Bengaluru). Not a certified medical device and not a diagnosis. Every finding must be confirmed by a qualified clinician. Technical detail for researchers is on page 2.";
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "normal");
+    const shortLines = doc.splitTextToSize(shortDisc, usableW - 8);
+    const shortH = 8 + shortLines.length * 3.3;
+    doc.setFillColor(255, 251, 235);
+    doc.setDrawColor(245, 158, 11);
+    doc.setLineWidth(0.35);
+    doc.roundedRect(M, y, usableW, shortH, 1.2, 1.2, "FD");
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 41, 59);
-    doc.text("TECHNICAL VERIFICATION NOTE: CALIBRATION & SCORE INTERPRETATION", M + 5, y + 5);
-
-    doc.setFontSize(6.6);
+    doc.setTextColor(146, 64, 14);
+    doc.text("IMPORTANT", M + 4, y + 4.6);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(71, 85, 105);
-    doc.text(noteLines, M + 5, y + 9.5);
+    doc.text(shortLines, M + 4, y + 8.2);
 
     // Page 1 Footer
     doc.setFontSize(6.8);
     doc.setFont("helvetica", "italic");
     doc.setTextColor(148, 163, 184);
     doc.text(
-      "Page 1 of 2: Model Output & Class Scores — Turn to Page 2 for Model Results & Technical Methodology",
+      "Page 1 of 2: Clinical summary - Page 2 contains model-level and methodological detail for researchers",
       W / 2,
       288,
       { align: "center" },
@@ -483,12 +523,12 @@ export default function ResultsPanel({ data }) {
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(11.5);
     doc.setFont("helvetica", "bold");
-    doc.text("EchoVote — Detailed 8-Model Benchmark & Research Audit", M, 11);
+    doc.text("EchoVote - Technical Appendix for Researchers", M, 11);
 
     doc.setFontSize(7.2);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(160, 174, 192);
-    doc.text("Model-by-Model Verification Table · Capstone Project Viva Audit Data · Page 2 of 2", W - M, 11, {
+    doc.text("Model-level results and methodology - Page 2 of 2", W - M, 11, {
       align: "right",
     });
 
@@ -674,6 +714,60 @@ export default function ResultsPanel({ data }) {
 
     y += confStripH + 4.5;
 
+    // ── Screening rule, ensemble method and limitations (researcher detail) ──
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 41, 59);
+    doc.text("3b. SCREENING RULE, ENSEMBLE METHOD & LIMITATIONS", M, y);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.35);
+    doc.line(M, y + 2, W - M, y + 2);
+    y += 5.5;
+
+    const techItems = [
+      [
+        "Arrhythmia screen",
+        arrhythmia
+          ? `Flag = (1 - mean P(Normal)) >= ${arrhythmia.threshold}. This case: P(abnormal) = ${(arrhythmia.p_abnormal * 100).toFixed(1)}%. The threshold was chosen on 5,000 MIT-BIH test beats (about 96.7% sensitivity and 95.6% specificity per beat); it was tuned on the same patients the models were trained on, so expect lower performance on new patients.`
+          : "Not available for this analysis.",
+      ],
+      [
+        "Beat-class decision",
+        "Highest arithmetic mean of the valid models' class probabilities (soft voting). Ties follow the order N, S, V, F, Q. Scores are uncalibrated model outputs, not clinical probabilities.",
+      ],
+      [
+        "Model agreement",
+        `${agreementTier} (${(agreePct * 100).toFixed(0)}% of models vote for the predicted class). ${concordanceText}.`,
+      ],
+      [
+        "Known limitation",
+        "On held-out MIT-BIH beats the three deep-learning models detected far fewer abnormal beats than the classical models (cause not yet investigated), so the ensemble is carried mainly by the classical models.",
+      ],
+      ["Input scope", REPORT_SCOPE_NOTE],
+    ];
+    doc.setFontSize(6.5);
+    const techLayout = techItems.map(([label, val]) => ({
+      label,
+      lines: doc.splitTextToSize(val, usableW - 38),
+    }));
+    const techH =
+      6 + techLayout.reduce((sum, t) => sum + Math.max(1, t.lines.length) * 3.3 + 1.6, 0);
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(M, y, usableW, techH, 1.2, 1.2, "FD");
+    let ty = y + 5.5;
+    techLayout.forEach(({ label, lines }) => {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(30, 41, 59);
+      doc.text(label, M + 4, ty);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(71, 85, 105);
+      doc.text(lines, M + 34, ty);
+      ty += Math.max(1, lines.length) * 3.3 + 1.6;
+    });
+    y += techH + 4.5;
+
     // ── Section 4: Research Methodology & Architecture Specifications ────────
     doc.setFontSize(8.5);
     doc.setFont("helvetica", "bold");
@@ -822,9 +916,10 @@ export default function ResultsPanel({ data }) {
     doc.save(`EchoVote_Clinical_Report_${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
-  const tabs = ["overview", "disease-chance", "all-models"];
+  const tabs = ["overview", "technical", "disease-chance", "all-models"];
   const tabLabels = {
-    overview: "Overview",
+    overview: "Clinical Summary",
+    technical: "Model Comparison",
     "disease-chance": "Ensemble Scores",
     "all-models": "All Models",
   };
@@ -868,6 +963,59 @@ export default function ResultsPanel({ data }) {
       {/* ── OVERVIEW ── */}
       {tab === "overview" && (
         <div style={s.col} className="results-overview">
+          {/* Arrhythmia screen */}
+          {arrhythmia && (
+            <div
+              role="status"
+              style={{
+                ...s.verdictBox,
+                background: arrhythmia.detected ? SEV["Ventricular (V)"].bg : SEV["Normal (N)"].bg,
+                borderColor: arrhythmia.detected ? SEV["Ventricular (V)"].border : SEV["Normal (N)"].border,
+              }}
+              className="card-hover results-verdict"
+            >
+              <div style={{ flex: 1 }}>
+                <div style={s.verdictLabel}>Arrhythmia Screen</div>
+                <div
+                  style={{
+                    ...s.verdictName,
+                    color: arrhythmia.detected ? SEV["Ventricular (V)"].text : SEV["Normal (N)"].text,
+                  }}
+                >
+                  {arrhythmia.detected
+                    ? "Possible arrhythmia detected"
+                    : "No arrhythmia detected in this beat"}
+                </div>
+                <div style={s.verdictMeta}>
+                  {(arrhythmia.p_abnormal * 100).toFixed(1)}% ensemble probability of an abnormal beat
+                  &nbsp;·&nbsp; flagged at ≥ {(arrhythmia.threshold * 100).toFixed(0)}%
+                  &nbsp;·&nbsp; screening aid only — confirm with a clinician
+                </div>
+                {arrhythmia.beats_total > 1 && (
+                  <div style={{ ...s.verdictMeta, marginTop: 6 }}>
+                    {arrhythmia.beats_flagged} of {arrhythmia.beats_total} beats in the strip were flagged.
+                    The beat shown below is the {arrhythmia.detected ? "most abnormal" : "median"} one.
+                  </div>
+                )}
+                {arrhythmia.irregular_rhythm && (
+                  <div style={{ ...s.verdictMeta, marginTop: 6 }}>
+                    The intervals between beats are irregular
+                    {segmentation?.rhythm?.rr_cv != null
+                      ? ` (variation ${(segmentation.rhythm.rr_cv * 100).toFixed(0)}%)`
+                      : ""}
+                    , which can accompany rhythm disorders such as atrial fibrillation. Confirm on
+                    the full ECG.
+                  </div>
+                )}
+                {source_image && (
+                  <div style={{ ...s.verdictMeta, marginTop: 6 }}>
+                    Extracted from a photo, which is less reliable than a digital signal. Check
+                    against the original ECG.
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {/* Real image preview for photo uploads */}
           {source_image && (
             <div style={s.card} className="card-hover results-photo-preview">
@@ -1151,6 +1299,28 @@ export default function ResultsPanel({ data }) {
             )}
           </div>
 
+          <div
+            style={{ ...s.card, fontSize: 12, lineHeight: 1.6, color: "var(--text-secondary)" }}
+            className="results-verdict"
+          >
+            This is a single-beat result from a research decision-support tool. It is not a
+            diagnosis and does not replace clinical judgement; confirm every finding with a
+            clinician. Per-model results are under <b>Model Comparison</b>, and the PDF report
+            carries a clinician summary on page 1 and technical detail on page 2.
+          </div>
+        </div>
+      )}
+
+      {/* ── MODEL COMPARISON (technical) ── */}
+      {tab === "technical" && (
+        <div style={s.col} className="results-overview">
+          <div
+            style={{ ...s.card, fontSize: 12, color: "var(--text-muted)" }}
+            className="results-verdict"
+          >
+            Model-level detail for researchers. The deep-learning and classical
+            groups can disagree; the clinical summary uses the combined ensemble.
+          </div>
           {/* ── DL vs ML inline ── */}
           <div style={s.card} className="card-hover results-model-compare">
             <div style={s.cardHead}>
@@ -1686,8 +1856,8 @@ export default function ResultsPanel({ data }) {
         </div>
       )}
 
-      {/* ── Clinical Summary ── */}
-      {(() => {
+      {/* ── Model output & interpretation (technical) ── */}
+      {tab === "technical" && (() => {
         const agreePct = (counts[consensus] || 0) / (valid.length || 1);
         const consensusLevel =
           agreePct >= 0.875 ? "HIGH" : agreePct >= 0.625 ? "MODERATE" : "LOW";

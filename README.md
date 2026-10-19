@@ -3,6 +3,8 @@
 > AI-powered cardiac diagnosis using an 8-model ensemble (3 Deep Learning + 5 Machine Learning).  
 > Built for doctors and researchers. Capstone research — BMSCE Bengaluru.
 
+**How it works:** see [HOW_IT_WORKS.md](HOW_IT_WORKS.md) for how images are read, the model and screening logic, and how the sensitivity heatmap is computed.
+
 ---
 
 ## Quick Start (Docker)
@@ -13,12 +15,12 @@
    git clone https://github.com/AyushJha004/EchoVote.git
    cd EchoVote
    ```
-3. Put the trained model files in `models/` (or leave it empty to use Demo Mode).
+3. Put the trained model files in `models/` (all 8 models are required for full ensemble results; there is no demo mode).
 4. Build the images and start the app:
    ```powershell
    docker compose up -d --build
    ```
-5. Open **http://localhost:3001**. Check model status at **http://localhost:3001/api/health**; with trained models loaded, the response lists all 8 models and `"demo_mode":false`.
+5. Open **http://localhost:3001**. Check model status at **http://localhost:3001/api/health**; with trained models loaded, the response lists all 8 models with `"live":true`.
 
 ### After a system restart
 
@@ -191,7 +193,7 @@ File saves as `EchoVote_Report_YYYY-MM-DD.pdf`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/health` | Backend status + models loaded + demo mode flag |
+| GET | `/api/health` | Backend status + models loaded + `live` flag |
 | POST | `/api/predict/csv` | Upload CSV file (187 values) |
 | POST | `/api/predict/image` | Upload ECG photo — returns signal + original image as base64 |
 | POST | `/api/predict/manual` | JSON `{values: [...187 floats]}` |

@@ -48,7 +48,7 @@ curl.exe http://localhost:3001/api/health
 ```
 
 When ready with trained model files installed, the response reports
-`"models_loaded":8` and `"demo_mode":false`.
+`"models_loaded":8` and `"live":true`.
 
 ## 5. Open EchoVote
 

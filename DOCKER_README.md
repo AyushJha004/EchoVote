@@ -40,7 +40,7 @@ The first model load can take several minutes. Check readiness using:
 curl.exe http://localhost:3001/api/health
 ```
 
-With trained models available, the response reports `"models_loaded":8` and `"demo_mode":false`.
+With trained models available, the response reports `"models_loaded":8` and `"live":true`.
 Authentication accounts are stored in SQLite at `/app/data/users.db` inside the backend container. Docker Compose mounts the named `user_data` volume at `/app/data`, so accounts persist when containers are rebuilt or recreated.
 
 Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes (260,000 iterations), not as plaintext. The `/auth/register` and `/auth/login` endpoints support account creation and login by username or email. The password-change endpoint requires the current password; it does not provide forgotten-password recovery. The frontend Nginx proxy forwards both `/api/*` and `/auth/*` to FastAPI.
@@ -101,7 +101,7 @@ docker compose logs --tail 100 backend
 
 ## No Models? No Problem
 
-App runs in **Demo Mode** if models not found. Full UI works with simulated predictions.
+There is no demo mode: if the models are not found the prediction endpoints return 503 and the UI shows "Models unavailable".
 
 ---
 

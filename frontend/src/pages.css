@@ -1,0 +1,424 @@
+/* ── Dashboard additions ───────────────────────────────────── */
+.ev-section {
+  margin-top: 22px;
+}
+.ev-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 2px 12px;
+}
+.ev-section-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ev-section-head span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.ev-tiles {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+}
+.ev-tile {
+  position: relative;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  overflow: hidden;
+  transition: var(--t);
+}
+.ev-tile::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: var(--c);
+  opacity: 0.85;
+}
+.ev-tile:hover {
+  transform: translateY(-3px);
+  border-color: var(--c);
+  box-shadow: 0 18px 34px -22px var(--c);
+}
+.ev-tile .ev-badge {
+  margin-bottom: 12px;
+}
+.ev-tile b {
+  display: block;
+  font-size: 14px;
+}
+.ev-tile span {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.ev-two {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.ev-recent {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ev-recent button {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  transition: var(--t);
+}
+.ev-recent button:hover {
+  border-color: var(--c);
+  background: var(--bg-hover);
+}
+.ev-recent .ev-badge {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+  border-radius: 11px;
+}
+.ev-recent-main {
+  flex: 1;
+  min-width: 0;
+}
+.ev-recent-main b {
+  display: block;
+  font-size: 14px;
+}
+.ev-recent-main span {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.ev-flag {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.ev-flag.is-ok {
+  color: #a7f3d0;
+  background: rgba(52, 211, 153, 0.1);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+.ev-flag.is-warn {
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.1);
+  border: 1px solid rgba(248, 113, 113, 0.35);
+}
+.ev-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 30px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  border-radius: 14px;
+  border: 1px dashed var(--border-strong);
+}
+.ev-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ev-tips li {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.ev-tips svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--ev-ok);
+}
+
+/* ── Guide / About ─────────────────────────────────────────── */
+.ev-fade {
+  animation: ev-fade 0.35s var(--ease);
+}
+@keyframes ev-fade {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.ev-page-head {
+  margin-bottom: 24px;
+}
+.ev-page-head h1 {
+  margin: 8px 0 6px;
+  font-size: clamp(26px, 3vw, 36px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+.ev-page-head p {
+  max-width: 680px;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+}
+.ev-guide {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.ev-subnav {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+}
+.ev-subnav button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  transition: var(--t);
+}
+.ev-subnav button:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.ev-subnav button.is-active {
+  color: #fff;
+  border-color: rgba(34, 211, 238, 0.3);
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.14), rgba(99, 102, 241, 0.2));
+}
+.ev-cards {
+  display: grid;
+  gap: 16px;
+}
+.ev-cards--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ev-cards--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.ev-card {
+  padding: 22px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  backdrop-filter: blur(14px);
+  transition: var(--t);
+}
+.ev-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+.ev-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.ev-card p {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.ev-card--row {
+  display: flex;
+  gap: 18px;
+  align-items: flex-start;
+  border-left: 3px solid var(--c);
+}
+.ev-card-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  margin-bottom: 14px;
+  border-radius: 13px;
+  color: var(--ev-accent);
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+}
+.ev-badge {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 40%, transparent);
+}
+.ev-steps-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+}
+.ev-steps-list li {
+  margin-bottom: 6px;
+}
+.ev-steps-list li::marker {
+  color: var(--ev-accent);
+  font-weight: 700;
+}
+.ev-callout {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  background: rgba(34, 211, 238, 0.05);
+}
+.ev-callout svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ev-accent);
+}
+.ev-ribbon {
+  height: 12px;
+  margin: 6px 0 6px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4f7cff, #fbbf24, #f87171);
+}
+.ev-ribbon-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.ev-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ev-legend li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.ev-legend i {
+  width: 10px;
+  height: 10px;
+  margin-top: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ev-legend b {
+  display: block;
+  font-size: 13.5px;
+}
+.ev-legend span {
+  display: block;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.ev-disclaimer {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 20px;
+  padding: 20px 22px;
+  border-radius: 20px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  background: rgba(251, 191, 36, 0.06);
+}
+.ev-disclaimer svg {
+  flex-shrink: 0;
+  color: var(--ev-warn);
+}
+.ev-disclaimer b {
+  font-size: 15px;
+}
+.ev-disclaimer p {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1100px) {
+  .ev-tiles {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .ev-cards--3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ev-two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 900px) {
+  .ev-guide {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ev-subnav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+  }
+  .ev-subnav button {
+    flex-shrink: 0;
+  }
+}
+@media (max-width: 760px) {
+  .ev-tiles,
+  .ev-cards--2,
+  .ev-cards--3 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
