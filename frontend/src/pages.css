@@ -422,3 +422,41 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* History table */
+.ev-hist-tools { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
+.ev-hist-search { flex: 1 1 260px; }
+.ev-hist-search input, .ev-hist-select {
+  width: 100%; height: 46px; padding: 0 16px; border-radius: 14px; font: inherit; font-size: 15px;
+  color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border);
+}
+.ev-hist-select { width: auto; }
+.ev-hist-search input:focus, .ev-hist-select:focus { outline: none; border-color: var(--border-focus); }
+.ev-hist-count { margin-left: auto; font-family: var(--mono); font-size: 13px; color: var(--text-muted); }
+.ev-hist-table { border: 1px solid var(--border); border-radius: 18px; overflow: hidden; background: var(--bg-card); }
+.ev-hist-row {
+  display: grid; grid-template-columns: 1.5fr 0.9fr 1.5fr 1fr 1.5fr 0.7fr; align-items: center; gap: 12px;
+  width: 100%; padding: 18px 20px; text-align: left; font: inherit; font-size: 15px; color: var(--text-primary);
+  background: none; border: 0; border-top: 1px solid var(--border); cursor: pointer;
+}
+button.ev-hist-row:hover { background: var(--bg-hover); }
+.ev-hist-head { cursor: default; border-top: 0; font-weight: 600; font-size: 14px; color: var(--text-secondary); background: var(--bg-elevated); }
+.ev-hist-type { display: flex; align-items: center; gap: 12px; }
+.ev-hist-letter {
+  display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; font-style: normal;
+  font-family: var(--mono); font-weight: 700; font-size: 14px; color: var(--c);
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+}
+.ev-hist-conf { font-family: var(--mono); font-size: 14px; }
+.ev-hist-outcome { display: flex; align-items: center; gap: 8px; }
+.ev-hist-outcome b { width: 9px; height: 9px; border-radius: 50%; background: currentColor; }
+.ev-hist-outcome.is-ok b { color: var(--green-light); }
+.ev-hist-outcome.is-warn b { color: var(--amber-light); }
+.ev-hist-open { text-align: right; font-weight: 700; color: var(--blue-bright); }
+.ev-hist-none { padding: 24px; text-align: center; color: var(--text-muted); }
+@media (max-width: 800px) {
+  .ev-hist-row { grid-template-columns: 1fr 1fr; }
+  .ev-hist-head { display: none; }
+}
+.ev-hist-select { color-scheme: dark; }
+.ev-hist-select option { background: var(--bg-card); color: var(--text-primary); }

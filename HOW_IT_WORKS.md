@@ -262,6 +262,56 @@ On a 5,000-beat sample through the running backend, abnormal-beat detection (any
 | 1D-CNN, BiLSTM, CNN-LSTM **after** the input fix | 97-98% | 94-96% |
 | BiLSTM, CNN-LSTM, 1D-CNN **before** the fix | 9% / 49% / 61% | n/a |
 
+### Re-validation (21 Oct 2026)
+
+Run through the backend's own `_run_predict_batch` on a class-stratified sample of the MIT-BIH **test** set
+(3,718 beats: 1,000 N, 556 S, 1,000 V, 162 F, 1,000 Q), with all 8 models loaded. The accuracy figures
+are on a class-balanced sample, so they are not comparable to the natural-distribution figures above.
+
+| Model | Balanced acc. | Macro F1 | Screen sensitivity / specificity at 0.4 |
+|---|---|---|---|
+| 1D-CNN | 94.5% | 0.926 | 98.0% / 90.5% |
+| BiLSTM | 93.9% | 0.919 | 97.3% / 90.3% |
+| CNN-LSTM | 95.6% | 0.937 | 97.9% / 96.6% |
+| Random Forest | 92.7% | 0.903 | 95.7% / 97.6% |
+| XGBoost | 93.7% | 0.918 | 94.3% / 98.1% |
+| KNN | 93.5% | 0.911 | 96.7% / 93.4% |
+| SVM | 90.8% | 0.879 | 96.5% / 85.0% |
+| Logistic Regression | 74.7% | 0.712 | 95.2% / 42.7% |
+| **Ensemble (8 models)** | **95.6%** | **0.940** | **97.9% / 94.8%** |
+
+* The deep-learning fix holds: all three DL models are now at or above the classical models.
+* Weakest class for every model is **S** (ensemble recall 84.5%; most S misses are called Normal).
+* Ensemble screen threshold sweep (sensitivity / specificity): 0.3 = 98.6 / 91.3, 0.4 = 97.9 / 94.8,
+  0.5 = 97.1 / 97.0, 0.6 = 95.7 / 98.4. The 0.4 threshold is a reasonable but not optimal trade-off.
+* Logistic Regression is the weak member (42.7% specificity) and drags down the average; this was not tested
+  with it removed.
+* Same-patient caveat below still applies: these are MIT-BIH test beats, not new patients.
+
+**Photo path, image to signal.** A known signal was rendered as an ECG image (pink grid, blue grid, noisy
+JPEG, 2.5 degree rotation, very low resolution), run through `extract_trace`, and compared with the original
+(250 strips):
+
+| Condition | Trace correlation | R-peak recall | Spurious peaks per strip |
+|---|---|---|---|
+| Clean pink / blue grid, noisy JPEG | 0.97 | 97-98% | 0.06 |
+| Rotated 2.5 degrees | 0.81 | 95% | 0.08 |
+| Very low resolution (about 375 x 90 px) | 0.69 | 65% | 0.73 |
+
+So extraction is reliable on clean and moderately noisy images and degrades on rotated or tiny ones.
+This does **not** validate classification from photos: MIT-BIH beats are scaled one by one, so strips
+stitched from them are not realistic, and no labelled real ECG photographs were available.
+
+**Photo path, three real textbook strips** (no beat labels, only the rhythm shown):
+
+| Image | What it shows | App result |
+|---|---|---|
+| ACLS Figure 28 | Normal sinus rhythm, 3 beats | **False alarm**: flagged (P(abnormal) 0.49, one of 2 beats) |
+| LITFL atrial fibrillation | Irregular rhythm, about 23 beats | Flagged, irregular rhythm detected (R-R CV 0.26), but beats labelled V/Q and only 15 of about 23 R peaks found |
+| Atrial rhythms (flutter, regular) | Regular flutter waves | Not flagged, called Normal (7 of 7 R peaks found); flutter is outside what a beat-shape model can see |
+
+Three images are an illustration, not a validation. Photo classification accuracy remains unmeasured.
+
 Caveats you should keep in mind:
 * The MIT-BIH test beats come from the same patients as the training beats, so performance on new patients will be
   lower. A patient-wise evaluation has not been done.

@@ -45,6 +45,8 @@ export default function App() {
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
   const [history, setHistory] = useState([]);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyFilter, setHistoryFilter] = useState("all");
   const [serverOk, setServerOk] = useState(null);
   const [modelsLive, setModelsLive] = useState(false);
   const [manualText, setManualText] = useState("");
@@ -85,7 +87,7 @@ export default function App() {
     };
   }, []);
 
-  const post = async (url, body, isForm = false) => {
+  const post = async (url, body, isForm = false, input = "Manual") => {
     setLoading(true);
     setError(null);
     setResults(null);
@@ -107,7 +109,7 @@ export default function App() {
       if (!data) throw new Error("Server returned an unexpected non-JSON response");
       setResults(data);
       setHistory((h) => [
-        { id: Date.now(), time: new Date().toLocaleTimeString(), data },
+        { id: Date.now(), at: Date.now(), input, data },
         ...h.slice(0, 9),
       ]);
     } catch (e) {
@@ -122,14 +124,14 @@ export default function App() {
     if (!f) return;
     const fd = new FormData();
     fd.append("file", f);
-    await post("/api/predict/csv", fd, true);
+    await post("/api/predict/csv", fd, true, "CSV");
   };
   const handleImage = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
     const fd = new FormData();
     fd.append("file", f);
-    await post("/api/predict/image", fd, true);
+    await post("/api/predict/image", fd, true, "Photo");
   };
 
   const parseManual = (text) => {
@@ -164,7 +166,7 @@ export default function App() {
       setError(`Need 187 values, got ${vals.length}`);
       return;
     }
-    await post("/api/predict/manual", JSON.stringify({ values: vals }));
+    await post("/api/predict/manual", JSON.stringify({ values: vals }), false, "Paste");
   };
 
   const handleSample = async (type = "normal") => {
@@ -203,7 +205,7 @@ export default function App() {
       }
       return parseFloat(v.toFixed(4));
     });
-    await post("/api/predict/manual", JSON.stringify({ values: sig }));
+    await post("/api/predict/manual", JSON.stringify({ values: sig }), false, "Sample");
   };
 
   const initials = user?.name
@@ -381,330 +383,132 @@ export default function App() {
     "Unclassifiable (Q)",
   ];
 
+  const historyRows = history.map((h) => {
+    const { scores, prediction, classIndex } = getEnsemblePrediction(
+      h.data.predictions,
+      h.data.ensemble_probs,
+      CLASS_LIST,
+    );
+    const conf = classIndex >= 0 ? scores[classIndex] : null;
+    const letter = prediction?.match(/\((.)\)/)?.[1] || "?";
+    const flagged = h.data.arrhythmia?.detected;
+    let outcome = { label: "No action", tone: "ok" };
+    if (prediction === "Unknown" || letter === "Q" || conf == null) {
+      outcome = { label: "Review manually", tone: "warn" };
+    } else if (flagged ?? letter !== "N") {
+      outcome = { label: "Review recommended", tone: "warn" };
+    }
+    return {
+      h,
+      letter,
+      conf,
+      outcome,
+      color: COLOR_MAP[prediction] || "#5b4bd6",
+      shortName: prediction.replace(/\s*\(.\)$/, ""),
+      dateText: new Date(h.at).toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+    };
+  });
+
+  const historyVisible = historyRows.filter((r) => {
+    if (historyFilter !== "all" && r.letter !== historyFilter) return false;
+    const q = historySearch.trim().toLowerCase();
+    return (
+      !q || `${r.dateText} ${r.h.input} ${r.shortName}`.toLowerCase().includes(q)
+    );
+  });
+
+  // Called as a function (not <HistoryPage />) so typing in the search box
+  // does not remount the page and drop focus.
   const HistoryPage = () => (
     <div className="anim-fadeUp">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          marginBottom: 24,
-        }}
-      >
-        <h2 style={st.pageTitle}>Analysis History</h2>
-        {history.length > 0 && (
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {history.length} session record{history.length > 1 ? "s" : ""} ·
-            clears on refresh
-          </span>
-        )}
+      <div className="ev-page-head">
+        <h1>
+          History <span className="ev-pill">This session</span>
+        </h1>
+        <p>
+          Previous screenings, newest first. Open one to see its waveform,
+          sensitivity map and report. Records clear on refresh.
+        </p>
       </div>
-      {history.length === 0 ? (
-        <div style={st.empty}>
-          📊 No analyses yet. Upload an ECG to get started.
+      <div className="ev-hist-tools">
+        <div className="ev-hist-search">
+          <input
+            type="search"
+            placeholder="Search by date or input type"
+            value={historySearch}
+            onChange={(e) => setHistorySearch(e.target.value)}
+          />
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {history.map((h, i) => {
-            const preds = Object.entries(h.data.predictions || {}).filter(
-              ([, r]) => r.prediction && r.prediction !== "Error",
-            );
-            const counts = {};
-            preds.forEach(
-              ([, r]) =>
-                (counts[r.prediction] = (counts[r.prediction] || 0) + 1),
-            );
-            const { scores: ensProbs, prediction: consensus, classIndex } =
-              getEnsemblePrediction(
-                h.data.predictions,
-                h.data.ensemble_probs,
-                CLASS_LIST,
-              );
-            const color = COLOR_MAP[consensus] || "#5b4bd6";
-            const agreePct =
-              ((counts[consensus] || 0) / (preds.length || 1)) * 100;
-            const meanClassScore = classIndex >= 0 ? ensProbs[classIndex] : 0;
-            const dlCount = preds.filter(([n]) =>
-              ["1D-CNN", "BiLSTM", "CNN-LSTM"].includes(n),
-            ).length;
-            const mlCount = preds.length - dlCount;
-            const consensusLevel =
-              agreePct >= 87.5 ? "HIGH" : agreePct >= 62.5 ? "MODERATE" : "LOW";
-            const levelColor =
-              agreePct >= 87.5
-                ? "#0f9d8a"
-                : agreePct >= 62.5
-                  ? "#d98324"
-                  : "#c2362b";
-
+        <select
+          className="ev-hist-select"
+          value={historyFilter}
+          onChange={(e) => setHistoryFilter(e.target.value)}
+        >
+          <option value="all">All beat types</option>
+          {CLASS_LIST.map((c) => {
+            const l = c.match(/\((.)\)/)[1];
             return (
-              <div
-                key={h.id}
-                style={{
-                  ...st.historyCard,
-                  borderLeft: `4px solid ${color}`,
-                  padding: 0,
-                  overflow: "hidden",
-                }}
-                className="card-hover"
-                onClick={() => {
-                  setResults(h.data);
-                  setPage("upload");
-                }}
-              >
-                {/* Header row */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    padding: "16px 20px",
-                    borderBottom: "1px solid var(--border)",
-                    background: `${color}0d`,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "var(--r-md)",
-                      background: color,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 20,
-                      color: "#fff",
-                      fontWeight: 800,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {ICON_MAP[consensus] || "?"}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 17,
-                        fontWeight: 800,
-                        color,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {consensus}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-muted)",
-                        marginTop: 3,
-                      }}
-                    >
-                      #{history.length - i} · {h.time}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color }}>
-                      {(meanClassScore * 100).toFixed(1)}%
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
-                      }}
-                    >
-                      mean score
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stats row */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4,1fr)",
-                    gap: 0,
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
-                  {[
-                    { label: "Models", value: `${preds.length}/8` },
-                    {
-                      label: "Agreement",
-                      value: `${agreePct.toFixed(0)}%`,
-                      color: levelColor,
-                    },
-                    {
-                      label: "Model Agreement Tier",
-                      value: consensusLevel,
-                      color: levelColor,
-                    },
-                    { label: "DL / ML", value: `${dlCount} / ${mlCount}` },
-                  ].map(({ label, value, color: vc }) => (
-                    <div
-                      key={label}
-                      style={{
-                        padding: "10px 14px",
-                        textAlign: "center",
-                        borderRight: "1px solid var(--border)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: vc || "var(--text-primary)",
-                        }}
-                      >
-                        {value}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "var(--text-muted)",
-                          marginTop: 2,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.4px",
-                        }}
-                      >
-                        {label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Agreement bar + ensemble probs */}
-                <div
-                  style={{
-                    padding: "12px 20px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
-                  }}
-                >
-                  {/* Agreement bar */}
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        width: 70,
-                        flexShrink: 0,
-                      }}
-                    >
-                      Agreement
-                    </span>
-                    <div
-                      style={{
-                        flex: 1,
-                        background: "var(--bg-base)",
-                        borderRadius: 4,
-                        height: 6,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${agreePct}%`,
-                          height: "100%",
-                          background: levelColor,
-                          borderRadius: 4,
-                          transition: "width 0.6s",
-                        }}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: levelColor,
-                        width: 32,
-                        textAlign: "right",
-                      }}
-                    >
-                      {agreePct.toFixed(0)}%
-                    </span>
-                  </div>
-
-                  {/* Ensemble prob mini bars */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      alignItems: "flex-end",
-                      height: 32,
-                    }}
-                  >
-                    {CLASS_LIST.map((cls, ci) => {
-                      const p = ensProbs[ci] || 0;
-                      const c = COLOR_MAP[cls];
-                      return (
-                        <div
-                          key={cls}
-                          style={{
-                            flex: 1,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: 2,
-                          }}
-                        >
-                          <div
-                            style={{ fontSize: 9, color: c, fontWeight: 700 }}
-                          >
-                            {(p * 100).toFixed(0)}%
-                          </div>
-                          <div
-                            style={{
-                              width: "100%",
-                              background: "var(--bg-base)",
-                              borderRadius: 3,
-                              height: 20,
-                              display: "flex",
-                              alignItems: "flex-end",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: "100%",
-                                height: `${Math.max(p * 100, 2)}%`,
-                                background: c,
-                                opacity: cls === consensus ? 1 : 0.4,
-                                borderRadius: 3,
-                              }}
-                            />
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 8,
-                              color: "var(--text-muted)",
-                              textAlign: "center",
-                              lineHeight: 1.1,
-                            }}
-                          >
-                            {cls.split(" ")[0]}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-muted)",
-                      textAlign: "right",
-                    }}
-                  >
-                    Click to reload full results →
-                  </div>
-                </div>
-              </div>
+              <option key={l} value={l}>
+                {c.replace(/\s*\(.\)$/, "")}
+              </option>
             );
           })}
+        </select>
+        <span className="ev-hist-count">
+          {historyVisible.length} result{historyVisible.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {history.length === 0 ? (
+        <div style={st.empty}>No analyses yet. Upload an ECG to get started.</div>
+      ) : (
+        <div className="ev-hist-table" role="table">
+          <div className="ev-hist-row ev-hist-head" role="row">
+            <span>Date and time</span>
+            <span>Input</span>
+            <span>Beat type</span>
+            <span>Confidence</span>
+            <span>Outcome</span>
+            <span />
+          </div>
+          {historyVisible.length === 0 && (
+            <div className="ev-hist-none">No records match.</div>
+          )}
+          {historyVisible.map((r) => (
+            <button
+              type="button"
+              key={r.h.id}
+              className="ev-hist-row"
+              role="row"
+              onClick={() => {
+                setResults(r.h.data);
+                setPage("upload");
+              }}
+            >
+              <span>{r.dateText}</span>
+              <span>{r.h.input}</span>
+              <span className="ev-hist-type">
+                <i className="ev-hist-letter" style={{ "--c": r.color }}>
+                  {r.letter}
+                </i>
+                {r.shortName}
+              </span>
+              <span className="ev-hist-conf">
+                {r.conf == null ? "–" : `${Math.round(r.conf * 100)}%`}
+              </span>
+              <span className={`ev-hist-outcome is-${r.outcome.tone}`}>
+                <b />
+                {r.outcome.label}
+              </span>
+              <span className="ev-hist-open">Open ›</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -885,7 +689,7 @@ export default function App() {
                                 </div>
                                 <div className="ev-recent-main">
                                   <b>{prediction}</b>
-                                  <span>{h.time}</span>
+                                  <span>{new Date(h.at).toLocaleTimeString()}</span>
                                 </div>
                                 {h.data.arrhythmia && (
                                   <span className={`ev-flag ${flagged ? "is-warn" : "is-ok"}`}>
@@ -919,7 +723,7 @@ export default function App() {
               </>
             )}
             {page === "upload" && results && <ResultsPanel data={results} />}
-            {page === "history" && <HistoryPage />}
+            {page === "history" && HistoryPage()}
             {page === "guide" && <GuidePage />}
             {page === "about" && <AboutPage />}
           </div>
