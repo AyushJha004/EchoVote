@@ -417,6 +417,61 @@ def _trace_mask(gray):
     return dark
 
 
+MIN_IMAGE_W, MIN_IMAGE_H = 480, 120   # below this the trace cannot be recovered reliably
+SHORT_STRIP_BEATS = 4                 # fewer analysed beats than this -> low-reliability note
+DESKEW_MAX_DEG = 8.0
+DESKEW_MIN_DEG = 0.6
+DESKEW_MIN_GAIN = 1.05
+
+
+def estimate_skew(gray):
+    """Estimate the rotation (degrees) that levels the horizontal structure (grid lines, baseline).
+
+    Scores each candidate angle by how sharply the rows of the vertical-gradient image line up.
+    Returns 0.0 when no angle clearly beats the unrotated image.
+    """
+    import cv2
+    h, w = gray.shape
+    scale = min(1.0, 700.0 / w, 400.0 / h)
+    g = cv2.resize(gray, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA) if scale < 1.0 else gray
+    g = cv2.GaussianBlur(g, (3, 3), 0)
+    gy = np.abs(cv2.Sobel(g, cv2.CV_32F, 0, 1, ksize=3))
+    gh, gw = gy.shape
+    cx, cy = gw / 2.0, gh / 2.0
+    # ignore the corners that rotation would fill with border
+    margin = (int(gh * 0.12), int(gw * 0.06))
+
+    def score(angle):
+        m = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+        r = cv2.warpAffine(gy, m, (gw, gh), flags=cv2.INTER_LINEAR, borderValue=0)
+        r = r[margin[0]:gh - margin[0], margin[1]:gw - margin[1]]
+        rows = r.sum(axis=1)
+        return float(np.sum(rows ** 2))
+
+    base = score(0.0)
+    if base <= 0:
+        return 0.0
+    coarse = np.arange(-DESKEW_MAX_DEG, DESKEW_MAX_DEG + 1e-6, 0.5)
+    best = max(coarse, key=score)
+    fine = np.arange(best - 0.5, best + 0.5 + 1e-6, 0.1)
+    best = max(fine, key=score)
+    if abs(best) < DESKEW_MIN_DEG or score(best) < DESKEW_MIN_GAIN * base:
+        return 0.0
+    return float(best)
+
+
+def deskew(gray):
+    """Level a tilted photo. Returns (image, angle_degrees_applied)."""
+    import cv2
+    angle = estimate_skew(gray)
+    if angle == 0.0:
+        return gray, 0.0
+    h, w = gray.shape
+    m = cv2.getRotationMatrix2D((w / 2.0, h / 2.0), angle, 1.0)
+    paper = int(np.median(gray))
+    return cv2.warpAffine(gray, m, (w, h), flags=cv2.INTER_LINEAR, borderValue=paper), angle
+
+
 def extract_trace(gray, max_w=2000, max_h=600):
     """Recover a 1-D ECG trace (peaks up, 0-1) from a photo or scan of a strip. Returns None on failure."""
     import cv2
@@ -541,6 +596,12 @@ async def predict_image(file: UploadFile = File(...)):
 
         h, w = img.shape
 
+        if w < MIN_IMAGE_W or h < MIN_IMAGE_H:
+            raise ValueError(
+                f"Image is too small ({w} x {h} px). Please upload a larger photo or scan, "
+                f"at least {MIN_IMAGE_W} x {MIN_IMAGE_H} px, so the trace can be read reliably."
+            )
+
         # ── 1. Reject blank / low-contrast images ───────────────────────
         if float(np.std(img)) < 8.0:
             raise ValueError("Image appears to be blank or uniform. Please upload a photo of an ECG strip.")
@@ -549,6 +610,7 @@ async def predict_image(file: UploadFile = File(...)):
             raise ValueError("Image has insufficient contrast. Please upload a clear ECG strip photo.")
 
         # ── 2. Recover the trace (handles coloured / dark grids, frames, spikes) ──
+        img, skew_deg = deskew(img)
         trace = extract_trace(img)
         if trace is None or float(trace.max() - trace.min()) < 0.2:
             raise ValueError("Could not detect an ECG waveform in this image. Please upload a clear photo of an ECG strip with a visible trace.")
@@ -570,6 +632,7 @@ async def predict_image(file: UploadFile = File(...)):
                 'beats_total': len(beats),
                 'beats_flagged': int(sum(flagged)),
                 'irregular_rhythm': bool(rr_cv_for_flag),
+                'low_beat_count': len(beats) < SHORT_STRIP_BEATS,
             }
             beat_info = [
                 {'index': i, 'p_abnormal': round(float(pa), 4), 'flagged': bool(fl),
@@ -593,7 +656,8 @@ async def predict_image(file: UploadFile = File(...)):
             signal = np.interp(np.linspace(0, work_w - 1, 187), np.arange(work_w), trace)
             results, ensemble_probs = await run_predict(signal)
             arrhythmia = arrhythmia_assessment(ensemble_probs)
-            arrhythmia.update({'beats_total': 1, 'beats_flagged': int(arrhythmia['detected'])})
+            arrhythmia.update({'beats_total': 1, 'beats_flagged': int(arrhythmia['detected']),
+                               'low_beat_count': True})
             segmentation = None
 
         # Return original image as base64 so frontend can display it exactly
@@ -609,6 +673,7 @@ async def predict_image(file: UploadFile = File(...)):
             'ensemble_probs': ensemble_probs,
             'arrhythmia': arrhythmia,
             'segmentation': segmentation,
+            'rotation_corrected_deg': round(skew_deg, 1),
             'source_image': f'data:{mime};base64,{img_b64}'
         }
     except HTTPException:
