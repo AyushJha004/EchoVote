@@ -1,17 +1,39 @@
 import React, { useState, useRef, useEffect } from "react";
 import "./index.css";
+import "./shell.css";
+import "./pages.css";
 import ECGChart from "./ECGChart";
 import ResultsPanel from "./ResultsPanel";
 import LandingPage from "./LandingPage";
 import { LoginPage, SignupPage } from "./AuthPages";
+import { getEnsemblePrediction } from "./ensemble";
+import { GuidePage, AboutPage } from "./InfoPages";
+import {
+  IconPulse, IconHistory, IconBook, IconInfo, IconLogout, IconUpload, IconFile,
+  IconCamera, IconPaste, IconFlask, IconPlus, IconShield, IconCheck, IconArrow, LogoMark,
+} from "./icons";
 
 const API = process.env.REACT_APP_API_BASE || "";
 
 const NAV = [
-  { id: "upload", icon: "📤", label: "Analyze" },
-  { id: "history", icon: "🕓", label: "History" },
-  { id: "guide", icon: "📖", label: "Guide" },
-  { id: "about", icon: "ℹ️", label: "About" },
+  { id: "upload", Icon: IconPulse, label: "Analyze" },
+  { id: "history", Icon: IconHistory, label: "History" },
+  { id: "guide", Icon: IconBook, label: "Guide" },
+  { id: "about", Icon: IconInfo, label: "About" },
+];
+
+const PAGE_TITLES = {
+  upload: "Analyze",
+  history: "History",
+  guide: "Clinical Guide",
+  about: "About",
+};
+
+const SAMPLES = [
+  { type: "normal", label: "Normal sinus rhythm", sub: "Clean P-QRS-T, narrow QRS", color: "#34d399" },
+  { type: "ventricular", label: "Ventricular (PVC)", sub: "Wide bizarre QRS, no P wave", color: "#f87171" },
+  { type: "supraventricular", label: "Supraventricular (PAC)", sub: "Early narrow QRS, abnormal P wave", color: "#6b8cff" },
+  { type: "fusion", label: "Fusion beat", sub: "Widened intermediate QRS", color: "#fbbf24" },
 ];
 
 export default function App() {
@@ -23,10 +45,11 @@ export default function App() {
   const [error, setError] = useState(null);
   const [results, setResults] = useState(null);
   const [history, setHistory] = useState([]);
+  const [historySearch, setHistorySearch] = useState("");
+  const [historyFilter, setHistoryFilter] = useState("all");
   const [serverOk, setServerOk] = useState(null);
-  const [demoMode, setDemoMode] = useState(false);
+  const [modelsLive, setModelsLive] = useState(false);
   const [manualText, setManualText] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
   const csvRef = useRef(null);
   const imgRef = useRef(null);
 
@@ -47,7 +70,7 @@ export default function App() {
         const data = await response.json();
         if (!active) return;
         setServerOk(true);
-        setDemoMode(data.demo_mode);
+        setModelsLive(Boolean(data.live));
       } catch {
         if (active) setServerOk(false);
       } finally {
@@ -64,7 +87,7 @@ export default function App() {
     };
   }, []);
 
-  const post = async (url, body, isForm = false) => {
+  const post = async (url, body, isForm = false, input = "Manual") => {
     setLoading(true);
     setError(null);
     setResults(null);
@@ -86,7 +109,7 @@ export default function App() {
       if (!data) throw new Error("Server returned an unexpected non-JSON response");
       setResults(data);
       setHistory((h) => [
-        { id: Date.now(), time: new Date().toLocaleTimeString(), data },
+        { id: Date.now(), at: Date.now(), input, data },
         ...h.slice(0, 9),
       ]);
     } catch (e) {
@@ -101,14 +124,14 @@ export default function App() {
     if (!f) return;
     const fd = new FormData();
     fd.append("file", f);
-    await post("/api/predict/csv", fd, true);
+    await post("/api/predict/csv", fd, true, "CSV");
   };
   const handleImage = async (e) => {
     const f = e.target.files[0];
     if (!f) return;
     const fd = new FormData();
     fd.append("file", f);
-    await post("/api/predict/image", fd, true);
+    await post("/api/predict/image", fd, true, "Photo");
   };
 
   const parseManual = (text) => {
@@ -143,7 +166,7 @@ export default function App() {
       setError(`Need 187 values, got ${vals.length}`);
       return;
     }
-    await post("/api/predict/manual", JSON.stringify({ values: vals }));
+    await post("/api/predict/manual", JSON.stringify({ values: vals }), false, "Paste");
   };
 
   const handleSample = async (type = "normal") => {
@@ -182,7 +205,7 @@ export default function App() {
       }
       return parseFloat(v.toFixed(4));
     });
-    await post("/api/predict/manual", JSON.stringify({ values: sig }));
+    await post("/api/predict/manual", JSON.stringify({ values: sig }), false, "Sample");
   };
 
   const initials = user?.name
@@ -190,251 +213,132 @@ export default function App() {
     : "?";
 
   const Sidebar = () => (
-    <aside
-      className="app-sidebar"
-      style={{
-        ...st.sidebar,
-        width: sidebarOpen ? 240 : 70,
-        minWidth: sidebarOpen ? 240 : 70,
-      }}
-    >
-      <div style={st.logo} onClick={() => setSidebarOpen((o) => !o)}>
-        <div style={st.logoIcon} className="app-logo-icon">❤️</div>
-        {sidebarOpen && <span style={st.logoText} className="app-logo-text">EchoVote</span>}
+    <aside className="ev-rail" aria-label="Main navigation">
+      <div className="ev-brand">
+        <LogoMark size={36} />
+        <span className="ev-brand-name">EchoVote</span>
       </div>
-      <nav style={st.nav} className="app-nav">
-        {NAV.map(({ id, icon, label }) => (
-          <button
-            key={id}
-            onClick={() => setPage(id)}
-            style={{ ...st.navBtn, ...(page === id ? st.navActive : {}) }}
-            title={label}
-          >
-            <span style={st.navIcon}>{icon}</span>
-            {sidebarOpen && <span style={st.navLabel}>{label}</span>}
-          </button>
-        ))}
-      </nav>
-
-      {/* ── Profile + Logout ── */}
-      <div style={st.profileSection} className="app-profile-section">
-        <div style={st.profileChip}>
-          <div style={st.avatar}>{initials}</div>
-          {sidebarOpen && (
-            <div style={st.profileInfo}>
-              <div style={st.profileName}>{user?.name || "Guest"}</div>
-              {user?.org && <div style={st.profileOrg}>{user.org}</div>}
-            </div>
-          )}
-        </div>
-        {sidebarOpen && (
-          <button style={st.logoutBtn} onClick={handleLogout} title="Log out">
-            ⎋ Log out
-          </button>
-        )}
-        {!sidebarOpen && (
-          <button style={{ ...st.logoutBtn, padding: "8px", fontSize: 16 }} onClick={handleLogout} title="Log out">
-            ⎋
-          </button>
-        )}
-      </div>
-
-      <div style={st.statusBar} className="app-status-bar">
-        <div
-          style={{
-            ...st.statusDot,
-            background:
-              serverOk === null
-                ? "var(--amber-light)"
-                : serverOk
-                  ? "var(--green-bright)"
-                  : "var(--red-light)",
-          }}
-        />
-        {sidebarOpen && (
-          <span style={st.statusText}>
-            {serverOk === null
-              ? "Connecting"
-              : serverOk
-                ? demoMode
-                  ? "Demo"
-                  : "Live"
-                : "Offline"}
-          </span>
-        )}
+      {NAV.map(({ id, Icon, label }) => (
+        <button
+          key={id}
+          type="button"
+          className={`ev-nav-btn${page === id ? " is-active" : ""}`}
+          onClick={() => setPage(id)}
+          title={label}
+          aria-current={page === id ? "page" : undefined}
+        >
+          <Icon />
+          <span className="ev-nav-label">{label}</span>
+        </button>
+      ))}
+      <div className="ev-rail-spacer" />
+      <div className="ev-rail-note">
+        Research prototype. Not a certified medical device; not for diagnosis.
       </div>
     </aside>
   );
 
+  const TRACE =
+    "M0 30 L60 30 L75 30 L85 8 L97 52 L108 30 L190 30 L205 24 L220 30 L300 30 L315 30 L325 6 L337 54 L348 30 L430 30 L445 24 L460 30 L560 30";
+
   const UploadPanel = () => (
-    <div style={st.uploadPanel} className="analysis-input-panel">
-      <div style={st.inputTabs} className="analysis-input-tabs">
+    <div>
+      <div className="ev-seg" role="tablist">
         {[
-          { id: "csv", label: "📄 CSV" },
-          { id: "image", label: "📷 Photo" },
-          { id: "manual", label: "⌨️ Manual" },
-          { id: "sample", label: "🧪 Sample" },
-        ].map(({ id, label }) => (
+          { id: "csv", label: "CSV", Icon: IconFile },
+          { id: "image", label: "Photo", Icon: IconCamera },
+          { id: "manual", label: "Paste", Icon: IconPaste },
+          { id: "sample", label: "Samples", Icon: IconFlask },
+        ].map(({ id, label, Icon }) => (
           <button
             key={id}
+            type="button"
+            role="tab"
+            aria-selected={inputTab === id}
+            className={inputTab === id ? "is-active" : ""}
             onClick={() => setInputTab(id)}
-            style={{
-              ...st.inputTabBtn,
-              ...(inputTab === id ? st.inputTabActive : {}),
-            }}
           >
+            <Icon size={17} />
             {label}
           </button>
         ))}
       </div>
 
-      {inputTab === "csv" && (
-        <div>
+      {(inputTab === "csv" || inputTab === "image") && (
+        <>
           <div
-            className="drop-zone analysis-input-content analysis-input-content--file"
-            style={st.dropZone}
-            onClick={() => csvRef.current?.click()}
+            className="ev-drop"
+            role="button"
+            tabIndex={0}
+            onClick={() => (inputTab === "csv" ? csvRef : imgRef).current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ")
+                (inputTab === "csv" ? csvRef : imgRef).current?.click();
+            }}
           >
-            <div style={st.dropIcon}>📄</div>
-            <div style={st.dropTitle}>Upload CSV File</div>
-            <div style={st.dropSub}>187 comma-separated ECG values</div>
-            <div style={st.dropBtn}>Choose File</div>
+            <div className="ev-drop-icon">
+              {inputTab === "csv" ? <IconUpload size={28} /> : <IconCamera size={28} />}
+            </div>
+            <h3>{inputTab === "csv" ? "Upload a CSV file" : "Upload an ECG photo"}</h3>
+            <p>
+              {inputTab === "csv"
+                ? "One heartbeat · 187 comma-separated values"
+                : "JPG or PNG of an ECG strip · the signal is extracted automatically"}
+            </p>
+            <span className="ev-btn ev-btn--primary">
+              {inputTab === "csv" ? "Choose file" : "Choose image"}
+            </span>
+            <svg className="ev-drop-trace" viewBox="0 0 560 60" preserveAspectRatio="none" aria-hidden="true">
+              <path d={TRACE} fill="none" stroke="#22d3ee" strokeWidth="2" strokeLinejoin="round" />
+            </svg>
           </div>
-          <input
-            ref={csvRef}
-            type="file"
-            accept=".csv"
-            onChange={handleCSV}
-            style={{ display: "none" }}
-          />
-        </div>
-      )}
-
-      {inputTab === "image" && (
-        <div>
-          <div
-            className="drop-zone analysis-input-content analysis-input-content--file"
-            style={st.dropZone}
-            onClick={() => imgRef.current?.click()}
-          >
-            <div style={st.dropIcon}>📷</div>
-            <div style={st.dropTitle}>Upload ECG Photo</div>
-            <div style={st.dropSub}>JPG, PNG · AI extracts signal</div>
-            <div style={st.dropBtn}>Choose Image</div>
-          </div>
-          <input
-            ref={imgRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImage}
-            style={{ display: "none" }}
-          />
-        </div>
+          <input ref={csvRef} type="file" accept=".csv" onChange={handleCSV} style={{ display: "none" }} />
+          <input ref={imgRef} type="file" accept="image/*" onChange={handleImage} style={{ display: "none" }} />
+        </>
       )}
 
       {inputTab === "manual" && (
-        <div className="analysis-input-content analysis-input-content--manual">
-          <label style={st.label}>
-            Paste 187 values (comma, tab, or space separated)
-          </label>
+        <div>
           <textarea
-            style={st.textarea}
-            className="analysis-manual-textarea"
-            rows={6}
-            placeholder="Comma, tab, or space separated — e.g. 9.60E-01  8.63E-01  4.62E-01 ..."
+            className="ev-textarea"
+            placeholder="Paste 187 values — comma, tab or space separated, e.g. 9.60E-01 8.63E-01 4.62E-01 ..."
             value={manualText}
             onChange={(e) => setManualText(e.target.value)}
-            onPaste={(e) => {
-              e.preventDefault();
-              const pasted = e.clipboardData.getData("text/plain");
-              setManualText(pasted);
-            }}
           />
-          <div style={st.valCount}>
-            {manualText
-              ? `${parseManual(manualText).length}/187 values`
-              : "0/187 values"}
+          <div className="ev-count">
+            {manualText ? `${parseManual(manualText).length}/187 values` : "0/187 values"}
           </div>
           <button
-            style={st.btn}
-            className="btn-primary analysis-submit"
+            type="button"
+            className="ev-btn ev-btn--primary"
             onClick={handleManual}
             disabled={loading}
           >
-            {loading ? "⏳ Analyzing..." : "🚀 Analyze"}
+            {loading ? "Analyzing…" : "Analyze signal"}
           </button>
         </div>
       )}
 
       {inputTab === "sample" && (
-        <div style={st.samplePanel} className="analysis-input-content analysis-sample-panel">
-          <div style={st.sampleIcon}>🧪</div>
-          <div style={st.sampleTitle}>Synthetic ECG Samples</div>
-          <div style={st.sampleSub}>
-            Select an arrhythmia type to generate a synthetic beat for testing.
-          </div>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 10,
-              width: "100%",
-            }}
-          >
-            {[
-              {
-                type: "normal",
-                label: "🟢 Normal Sinus Rhythm",
-                sub: "Clean P-QRS-T, narrow QRS",
-              },
-              {
-                type: "ventricular",
-                label: "🔴 Ventricular (PVC)",
-                sub: "Wide bizarre QRS, no P wave, deep S",
-              },
-              {
-                type: "supraventricular",
-                label: "🔵 Supraventricular (PAC)",
-                sub: "Early narrow QRS, abnormal P wave",
-              },
-              {
-                type: "fusion",
-                label: "🟠 Fusion Beat",
-                sub: "Widened intermediate QRS morphology",
-              },
-            ].map(({ type, label, sub }) => (
+        <div>
+          <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--text-muted)" }}>
+            Generate a synthetic beat to try the workflow. Synthetic beats only demonstrate the
+            interface; they are not clinical data.
+          </p>
+          <div className="ev-samples">
+            {SAMPLES.map(({ type, label, sub, color }) => (
               <button
                 key={type}
+                type="button"
+                className="ev-sample"
+                style={{ "--sample-color": color }}
                 disabled={loading}
                 onClick={() => handleSample(type)}
-                style={{
-                  padding: "12px 16px",
-                  borderRadius: "var(--r-md)",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-elevated)",
-                  cursor: "pointer",
-                  textAlign: "left",
-                  transition: "var(--t)",
-                  opacity: loading ? 0.5 : 1,
-                }}
               >
-                <div
-                  style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {label}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                    marginTop: 3,
-                  }}
-                >
-                  {sub}
+                <i className="ev-sample-dot" />
+                <div>
+                  <b>{label}</b>
+                  <span>{sub}</span>
                 </div>
               </button>
             ))}
@@ -443,20 +347,15 @@ export default function App() {
       )}
 
       {error && (
-        <div style={st.errorBox} className="analysis-feedback anim-fadeUp">
-          <strong>⚠️ Error:</strong> {error}
-          {serverOk === false && (
-            <div style={{ marginTop: 8, fontSize: 12 }}>
-              Backend offline. Restart it.
-            </div>
-          )}
+        <div className="ev-feedback is-error" role="alert">
+          <strong>Analysis failed.</strong> {error}
+          {serverOk === false && <div style={{ marginTop: 6 }}>The backend is offline.</div>}
         </div>
       )}
-
       {loading && (
-        <div style={st.loadingBox} className="analysis-feedback anim-fadeUp">
-          <div style={st.spinner} />
-          <span>Analyzing with AI ensemble...</span>
+        <div className="ev-feedback is-loading" role="status">
+          <div className="ev-spin" />
+          <span>Analysing the ECG…</span>
         </div>
       )}
     </div>
@@ -484,795 +383,134 @@ export default function App() {
     "Unclassifiable (Q)",
   ];
 
+  const historyRows = history.map((h) => {
+    const { scores, prediction, classIndex } = getEnsemblePrediction(
+      h.data.predictions,
+      h.data.ensemble_probs,
+      CLASS_LIST,
+    );
+    const conf = classIndex >= 0 ? scores[classIndex] : null;
+    const letter = prediction?.match(/\((.)\)/)?.[1] || "?";
+    const flagged = h.data.arrhythmia?.detected;
+    let outcome = { label: "No action", tone: "ok" };
+    if (prediction === "Unknown" || letter === "Q" || conf == null) {
+      outcome = { label: "Review manually", tone: "warn" };
+    } else if (flagged ?? letter !== "N") {
+      outcome = { label: "Review recommended", tone: "warn" };
+    }
+    return {
+      h,
+      letter,
+      conf,
+      outcome,
+      color: COLOR_MAP[prediction] || "#5b4bd6",
+      shortName: prediction.replace(/\s*\(.\)$/, ""),
+      dateText: new Date(h.at).toLocaleString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }),
+    };
+  });
+
+  const historyVisible = historyRows.filter((r) => {
+    if (historyFilter !== "all" && r.letter !== historyFilter) return false;
+    const q = historySearch.trim().toLowerCase();
+    return (
+      !q || `${r.dateText} ${r.h.input} ${r.shortName}`.toLowerCase().includes(q)
+    );
+  });
+
+  // Called as a function (not <HistoryPage />) so typing in the search box
+  // does not remount the page and drop focus.
   const HistoryPage = () => (
     <div className="anim-fadeUp">
-      <div
-        style={{
-          display: "flex",
-          alignItems: "baseline",
-          justifyContent: "space-between",
-          marginBottom: 24,
-        }}
-      >
-        <h2 style={st.pageTitle}>Analysis History</h2>
-        {history.length > 0 && (
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {history.length} session record{history.length > 1 ? "s" : ""} ·
-            clears on refresh
-          </span>
-        )}
+      <div className="ev-page-head">
+        <h1>
+          History <span className="ev-pill">This session</span>
+        </h1>
+        <p>
+          Previous screenings, newest first. Open one to see its waveform,
+          sensitivity map and report. Records clear on refresh.
+        </p>
       </div>
-      {history.length === 0 ? (
-        <div style={st.empty}>
-          📊 No analyses yet. Upload an ECG to get started.
+      <div className="ev-hist-tools">
+        <div className="ev-hist-search">
+          <input
+            type="search"
+            placeholder="Search by date or input type"
+            value={historySearch}
+            onChange={(e) => setHistorySearch(e.target.value)}
+          />
         </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {history.map((h, i) => {
-            const preds = Object.entries(h.data.predictions || {}).filter(
-              ([, r]) => r.prediction && r.prediction !== "Error",
-            );
-            const counts = {};
-            preds.forEach(
-              ([, r]) =>
-                (counts[r.prediction] = (counts[r.prediction] || 0) + 1),
-            );
-            const consensus = (
-              Object.keys(counts).sort((a, b) => counts[b] - counts[a])[0] ||
-              "Unknown"
-            ).trim();
-            const color = COLOR_MAP[consensus] || "#5b4bd6";
-            const agreePct =
-              ((counts[consensus] || 0) / (preds.length || 1)) * 100;
-            const avgConf =
-              preds
-                .filter(([, r]) => r.prediction === consensus)
-                .reduce((s, [, r]) => s + r.confidence, 0) /
-              (counts[consensus] || 1);
-            const ensProbs = h.data.ensemble_probs || CLASS_LIST.map(() => 0);
-            const dlCount = preds.filter(([n]) =>
-              ["1D-CNN", "BiLSTM", "CNN-LSTM"].includes(n),
-            ).length;
-            const mlCount = preds.length - dlCount;
-            const consensusLevel =
-              agreePct >= 87.5 ? "HIGH" : agreePct >= 62.5 ? "MODERATE" : "LOW";
-            const levelColor =
-              agreePct >= 87.5
-                ? "#0f9d8a"
-                : agreePct >= 62.5
-                  ? "#d98324"
-                  : "#c2362b";
-
+        <select
+          className="ev-hist-select"
+          value={historyFilter}
+          onChange={(e) => setHistoryFilter(e.target.value)}
+        >
+          <option value="all">All beat types</option>
+          {CLASS_LIST.map((c) => {
+            const l = c.match(/\((.)\)/)[1];
             return (
-              <div
-                key={h.id}
-                style={{
-                  ...st.historyCard,
-                  borderLeft: `4px solid ${color}`,
-                  padding: 0,
-                  overflow: "hidden",
-                }}
-                className="card-hover"
-                onClick={() => {
-                  setResults(h.data);
-                  setPage("upload");
-                }}
-              >
-                {/* Header row */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 14,
-                    padding: "16px 20px",
-                    borderBottom: "1px solid var(--border)",
-                    background: `${color}0d`,
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "var(--r-md)",
-                      background: color,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: 20,
-                      color: "#fff",
-                      fontWeight: 800,
-                      flexShrink: 0,
-                    }}
-                  >
-                    {ICON_MAP[consensus] || "?"}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 17,
-                        fontWeight: 800,
-                        color,
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {consensus}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--text-muted)",
-                        marginTop: 3,
-                      }}
-                    >
-                      #{history.length - i} · {h.time}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontSize: 22, fontWeight: 800, color }}>
-                      {(avgConf * 100).toFixed(1)}%
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.4px",
-                      }}
-                    >
-                      avg conf
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stats row */}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(4,1fr)",
-                    gap: 0,
-                    borderBottom: "1px solid var(--border)",
-                  }}
-                >
-                  {[
-                    { label: "Models", value: `${preds.length}/8` },
-                    {
-                      label: "Agreement",
-                      value: `${agreePct.toFixed(0)}%`,
-                      color: levelColor,
-                    },
-                    {
-                      label: "Consensus",
-                      value: consensusLevel,
-                      color: levelColor,
-                    },
-                    { label: "DL / ML", value: `${dlCount} / ${mlCount}` },
-                  ].map(({ label, value, color: vc }) => (
-                    <div
-                      key={label}
-                      style={{
-                        padding: "10px 14px",
-                        textAlign: "center",
-                        borderRight: "1px solid var(--border)",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 14,
-                          fontWeight: 700,
-                          color: vc || "var(--text-primary)",
-                        }}
-                      >
-                        {value}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          color: "var(--text-muted)",
-                          marginTop: 2,
-                          textTransform: "uppercase",
-                          letterSpacing: "0.4px",
-                        }}
-                      >
-                        {label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Agreement bar + ensemble probs */}
-                <div
-                  style={{
-                    padding: "12px 20px",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 10,
-                  }}
-                >
-                  {/* Agreement bar */}
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: 10 }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: "var(--text-muted)",
-                        width: 70,
-                        flexShrink: 0,
-                      }}
-                    >
-                      Agreement
-                    </span>
-                    <div
-                      style={{
-                        flex: 1,
-                        background: "var(--bg-base)",
-                        borderRadius: 4,
-                        height: 6,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${agreePct}%`,
-                          height: "100%",
-                          background: levelColor,
-                          borderRadius: 4,
-                          transition: "width 0.6s",
-                        }}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 10,
-                        fontWeight: 700,
-                        color: levelColor,
-                        width: 32,
-                        textAlign: "right",
-                      }}
-                    >
-                      {agreePct.toFixed(0)}%
-                    </span>
-                  </div>
-
-                  {/* Ensemble prob mini bars */}
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 6,
-                      alignItems: "flex-end",
-                      height: 32,
-                    }}
-                  >
-                    {CLASS_LIST.map((cls, ci) => {
-                      const p = ensProbs[ci] || 0;
-                      const c = COLOR_MAP[cls];
-                      return (
-                        <div
-                          key={cls}
-                          style={{
-                            flex: 1,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            gap: 2,
-                          }}
-                        >
-                          <div
-                            style={{ fontSize: 9, color: c, fontWeight: 700 }}
-                          >
-                            {(p * 100).toFixed(0)}%
-                          </div>
-                          <div
-                            style={{
-                              width: "100%",
-                              background: "var(--bg-base)",
-                              borderRadius: 3,
-                              height: 20,
-                              display: "flex",
-                              alignItems: "flex-end",
-                              overflow: "hidden",
-                            }}
-                          >
-                            <div
-                              style={{
-                                width: "100%",
-                                height: `${Math.max(p * 100, 2)}%`,
-                                background: c,
-                                opacity: cls === consensus ? 1 : 0.4,
-                                borderRadius: 3,
-                              }}
-                            />
-                          </div>
-                          <div
-                            style={{
-                              fontSize: 8,
-                              color: "var(--text-muted)",
-                              textAlign: "center",
-                              lineHeight: 1.1,
-                            }}
-                          >
-                            {cls.split(" ")[0]}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div
-                    style={{
-                      fontSize: 11,
-                      color: "var(--text-muted)",
-                      textAlign: "right",
-                    }}
-                  >
-                    Click to reload full results →
-                  </div>
-                </div>
-              </div>
+              <option key={l} value={l}>
+                {c.replace(/\s*\(.\)$/, "")}
+              </option>
             );
           })}
-        </div>
-      )}
-    </div>
-  );
-
-  const GuidePage = () => {
-    const [section, setSection] = useState("arrhythmia");
-    const sections = [
-      { id: "arrhythmia", label: "🫀 Arrhythmia Classes" },
-      { id: "howtouse", label: "📋 How to Use" },
-      { id: "tabs", label: "🗂 Result Tabs" },
-      { id: "heatmap", label: "🌡 Sensitivity Heatmap" },
-    ];
-    return (
-      <div className="anim-fadeUp">
-        <h2 style={st.pageTitle}>Clinical Guide</h2>
-
-        {/* Section tabs */}
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            marginBottom: 24,
-            flexWrap: "wrap",
-          }}
-        >
-          {sections.map((s) => (
+        </select>
+        <span className="ev-hist-count">
+          {historyVisible.length} result{historyVisible.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {history.length === 0 ? (
+        <div style={st.empty}>No analyses yet. Upload an ECG to get started.</div>
+      ) : (
+        <div className="ev-hist-table" role="table">
+          <div className="ev-hist-row ev-hist-head" role="row">
+            <span>Date and time</span>
+            <span>Input</span>
+            <span>Beat type</span>
+            <span>Confidence</span>
+            <span>Outcome</span>
+            <span />
+          </div>
+          {historyVisible.length === 0 && (
+            <div className="ev-hist-none">No records match.</div>
+          )}
+          {historyVisible.map((r) => (
             <button
-              key={s.id}
-              onClick={() => setSection(s.id)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: "var(--r-md)",
-                fontSize: 13,
-                fontWeight: 600,
-                background:
-                  section === s.id ? "var(--blue-light)" : "var(--bg-card)",
-                color: section === s.id ? "#fff" : "var(--text-secondary)",
-                border: `1px solid ${section === s.id ? "var(--blue-light)" : "var(--border)"}`,
-                boxShadow:
-                  section === s.id ? "var(--shadow-blue)" : "var(--shadow-xs)",
-                transition: "var(--t)",
+              type="button"
+              key={r.h.id}
+              className="ev-hist-row"
+              role="row"
+              onClick={() => {
+                setResults(r.h.data);
+                setPage("upload");
               }}
             >
-              {s.label}
+              <span>{r.dateText}</span>
+              <span>{r.h.input}</span>
+              <span className="ev-hist-type">
+                <i className="ev-hist-letter" style={{ "--c": r.color }}>
+                  {r.letter}
+                </i>
+                {r.shortName}
+              </span>
+              <span className="ev-hist-conf">
+                {r.conf == null ? "–" : `${Math.round(r.conf * 100)}%`}
+              </span>
+              <span className={`ev-hist-outcome is-${r.outcome.tone}`}>
+                <b />
+                {r.outcome.label}
+              </span>
+              <span className="ev-hist-open">Open ›</span>
             </button>
           ))}
         </div>
-
-        {/* ── Arrhythmia Classes ── */}
-        {section === "arrhythmia" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {[
-              {
-                title: "🟢 Normal (N)",
-                color: "var(--green-light)",
-                content:
-                  "Regular P-QRS-T pattern. Normal sinus rhythm. Rate 60–100 bpm. No clinical action required.",
-              },
-              {
-                title: "🔵 Supraventricular (S)",
-                color: "var(--teal-light)",
-                content:
-                  "SVT / PAC / Atrial Fibrillation. Originates above the ventricles. Narrow QRS complex. Action: Cardiology referral, Holter monitor, consider rate control.",
-              },
-              {
-                title: "🔴 Ventricular (V)",
-                color: "var(--red-light)",
-                content:
-                  "PVC / VT / VF. Originates in the ventricles. Wide QRS (>0.12s). Action: Immediate clinical attention. Amiodarone or defibrillation may be required.",
-              },
-              {
-                title: "🟠 Fusion (F)",
-                color: "var(--amber-light)",
-                content:
-                  "Fusion beat: simultaneous normal sinus and ventricular activation. Intermediate QRS morphology. Clinical review recommended.",
-              },
-              {
-                title: "🟣 Unclassifiable (Q)",
-                color: "var(--purple-light)",
-                content:
-                  "Paced beats or unknown morphology. Signal quality may be poor or beat does not fit standard patterns. Manual cardiologist review required.",
-              },
-            ].map(({ title, color, content }) => (
-              <div
-                key={title}
-                style={{ ...st.guideCard, borderLeftColor: color }}
-                className="card-hover"
-              >
-                <div style={{ ...st.guideTitle, color }}>{title}</div>
-                <p style={st.guideContent}>{content}</p>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── How to Use ── */}
-        {section === "howtouse" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {[
-              {
-                title: "📄 CSV Upload",
-                color: "var(--blue-light)",
-                steps: [
-                  "Export your ECG data as a CSV file with 187 comma-separated amplitude values.",
-                  "Click the CSV tab in the Analyze panel and press Choose File.",
-                  "The system automatically reads the first row of 187 values.",
-                  "Results appear instantly on the right panel.",
-                ],
-              },
-              {
-                title: "📷 Photo Upload",
-                color: "var(--teal-light)",
-                steps: [
-                  "Take a clear photo of a printed ECG strip or monitor screen.",
-                  "Click the Photo tab and upload the image (JPG or PNG).",
-                  "OpenCV extracts the waveform signal from the image automatically.",
-                  "Best results with good lighting and a straight, unobstructed strip.",
-                  "Mobile users: tap Choose Image and select Camera for direct capture.",
-                ],
-              },
-              {
-                title: "⌨️ Manual Entry",
-                color: "var(--amber-light)",
-                steps: [
-                  "Paste 187 values separated by commas, tabs, or spaces (MIT-BIH scientific notation like 9.60E-01 works too).",
-                  "The counter below shows how many values have been detected.",
-                  "Press Analyze when the counter reads 187/187.",
-                  "Useful for programmatic testing or pasting from a spreadsheet.",
-                ],
-              },
-              {
-                title: "🧪 Sample / Demo",
-                color: "var(--green-light)",
-                steps: [
-                  "Click the Sample tab and press Generate.",
-                  "A synthetic ECG with a realistic QRS complex is created.",
-                  "Use this to explore the full results panel without real patient data.",
-                  "Useful for demonstrations, training, and UI testing.",
-                ],
-              },
-            ].map(({ title, color, steps }) => (
-              <div
-                key={title}
-                style={{ ...st.guideCard, borderLeftColor: color }}
-                className="card-hover"
-              >
-                <div style={{ ...st.guideTitle, color }}>{title}</div>
-                <ol style={{ paddingLeft: 18, marginTop: 8 }}>
-                  {steps.map((s, i) => (
-                    <li key={i} style={{ ...st.guideContent, marginBottom: 6 }}>
-                      {s}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── Result Tabs ── */}
-        {section === "tabs" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {[
-              {
-                title: "🗂 Overview Tab",
-                color: "var(--blue-light)",
-                content:
-                  "The default tab after any analysis. Shows the ensemble verdict (the class most models agreed on), confidence percentage, and agreement count. Also contains the Sensitivity Heatmap and the DL vs ML comparison — all in one place. Start here.",
-              },
-              {
-                title: "📊 Disease Probability Tab",
-                color: "var(--teal-light)",
-                content:
-                  "Shows the averaged probability for each of the 5 arrhythmia classes across all models. The top predicted class is highlighted. Below that, a full per-model probability table lets you see exactly what each model output for every class — useful for research and second-opinion review.",
-              },
-              {
-                title: "🤖 All Models Tab",
-                color: "var(--amber-light)",
-                content:
-                  "Displays individual result cards for all 8 models (3 Deep Learning + 5 Machine Learning). Each card shows the model name, its prediction, confidence bar, and a mini probability breakdown per class. Use this to spot outlier models or verify ensemble consistency.",
-              },
-            ].map(({ title, color, content }) => (
-              <div
-                key={title}
-                style={{ ...st.guideCard, borderLeftColor: color }}
-                className="card-hover"
-              >
-                <div style={{ ...st.guideTitle, color }}>{title}</div>
-                <p style={st.guideContent}>{content}</p>
-              </div>
-            ))}
-            <div
-              style={{
-                ...st.guideCard,
-                borderLeftColor: "var(--purple-light)",
-              }}
-            >
-              <div style={{ ...st.guideTitle, color: "var(--purple-light)" }}>
-                🕓 History
-              </div>
-              <p style={st.guideContent}>
-                Every analysis you run in the current session is saved to
-                History (up to 10 entries). Click any entry to reload its full
-                results. History is session-only and clears on page refresh.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* ── Sensitivity Heatmap ── */}
-        {section === "heatmap" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div
-              style={{ ...st.guideCard, borderLeftColor: "var(--blue-light)" }}
-            >
-              <div style={{ ...st.guideTitle, color: "var(--blue-light)" }}>
-                🌡 What is the Sensitivity Heatmap?
-              </div>
-              <p style={st.guideContent}>
-                The heatmap is a perturbation-based explainability tool. It
-                answers:{" "}
-                <strong>
-                  "Which parts of this ECG beat most influenced the AI's
-                  prediction?"
-                </strong>
-                <br />
-                <br />
-                The algorithm slides a 10-sample window across all 187 points,
-                masks each window to zero, re-runs all 8 models, and measures
-                how much the ensemble confidence in the predicted class dropped.
-                A large drop means that region was critical to the decision.
-              </p>
-            </div>
-            <div
-              style={{ ...st.guideCard, borderLeftColor: "var(--teal-light)" }}
-            >
-              <div style={{ ...st.guideTitle, color: "var(--teal-light)" }}>
-                🎨 Reading the Color Ribbon
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  marginTop: 8,
-                }}
-              >
-                {[
-                  {
-                    color: "#3d55e6",
-                    label: "Teal / Blue",
-                    meaning:
-                      "Low impact — masking this region barely changed the prediction. The models do not rely on this segment.",
-                  },
-                  {
-                    color: "#d98324",
-                    label: "Amber / Yellow",
-                    meaning:
-                      "Moderate impact — this region has some influence on the classification.",
-                  },
-                  {
-                    color: "#c2362b",
-                    label: "Red",
-                    meaning:
-                      "High impact — this is a diagnostically critical segment. Masking it caused a large drop in confidence.",
-                  },
-                ].map(({ color, label, meaning }) => (
-                  <div
-                    key={label}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 14,
-                        height: 14,
-                        borderRadius: 3,
-                        background: color,
-                        flexShrink: 0,
-                        marginTop: 2,
-                      }}
-                    />
-                    <div>
-                      <span style={{ fontWeight: 700, color, fontSize: 13 }}>
-                        {label}:{" "}
-                      </span>
-                      <span style={st.guideContent}>{meaning}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div
-                style={{
-                  marginTop: 14,
-                  padding: "10px 14px",
-                  background: "var(--bg-elevated)",
-                  borderRadius: "var(--r-sm)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div
-                  style={{
-                    height: 12,
-                    borderRadius: 4,
-                    background:
-                      "linear-gradient(90deg, #3d55e6, #d98324, #c2362b)",
-                    marginBottom: 6,
-                  }}
-                />
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontSize: 11,
-                    color: "var(--text-muted)",
-                  }}
-                >
-                  <span>Low Impact</span>
-                  <span>Moderate</span>
-                  <span>High Impact</span>
-                </div>
-              </div>
-            </div>
-            <div
-              style={{ ...st.guideCard, borderLeftColor: "var(--amber-light)" }}
-            >
-              <div style={{ ...st.guideTitle, color: "var(--amber-light)" }}>
-                🔬 Clinical Interpretation
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                  marginTop: 8,
-                }}
-              >
-                {[
-                  {
-                    region: "QRS Complex (sharp spike) is red",
-                    meaning:
-                      "Models are correctly focusing on ventricular depolarization — expected and reassuring.",
-                  },
-                  {
-                    region: "P-wave region (before QRS) is red",
-                    meaning:
-                      "Atrial activity is driving the classification. Typical for Supraventricular (S) beats.",
-                  },
-                  {
-                    region: "T-wave region (after QRS) is red",
-                    meaning:
-                      "Repolarization abnormalities are influencing the result. Relevant for ischemia or electrolyte issues.",
-                  },
-                  {
-                    region: "Flat / baseline regions are red",
-                    meaning:
-                      "The model may be picking up noise or baseline wander. Flag for manual review.",
-                  },
-                ].map(({ region, meaning }) => (
-                  <div
-                    key={region}
-                    style={{
-                      padding: "10px 12px",
-                      background: "var(--bg-elevated)",
-                      borderRadius: "var(--r-sm)",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: "var(--text-primary)",
-                        marginBottom: 4,
-                      }}
-                    >
-                      📍 {region}
-                    </div>
-                    <div style={st.guideContent}>{meaning}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div
-              style={{ ...st.guideCard, borderLeftColor: "var(--green-light)" }}
-            >
-              <div style={{ ...st.guideTitle, color: "var(--green-light)" }}>
-                📋 Top Sensitive Regions List
-              </div>
-              <p style={st.guideContent}>
-                Below the heatmap ribbon, the top 3 most sensitive windows are
-                ranked by their average sensitivity score.
-                <br />
-                <br />
-                Example: <strong>"Sample 55–65 · 87%"</strong> means masking
-                those 10 samples caused an 87% drop in ensemble confidence — the
-                models rely heavily on that segment for their decision.
-                <br />
-                <br />
-                Use this list to quickly identify which part of the beat to
-                examine clinically without scanning the entire ribbon.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const AboutPage = () => (
-    <div className="anim-fadeUp">
-      <h2 style={st.pageTitle}>About EchoVote</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-        {[
-          {
-            title: "🏥 Project",
-            content:
-              "EchoVote is an AI-powered ECG arrhythmia classification tool built as a capstone research project at BMSCE Bengaluru. It uses an 8-model ensemble voting system — combining deep learning and classical machine learning — to classify single heartbeats into 5 AAMI standard classes.",
-          },
-          {
-            title: "📊 Dataset",
-            content:
-              "MIT-BIH Arrhythmia Database. 87,554 training samples across 5 classes (N, S, V, F, Q). Class imbalance handled with SMOTE oversampling. Features are 187 amplitude samples per beat at 360 Hz.",
-          },
-          {
-            title: "🧠 Ensemble Models",
-            content:
-              "3 Deep Learning: 1D-CNN (Conv1D → BatchNorm → MaxPool → Dense), BiLSTM (Bidirectional LSTM × 2), CNN-LSTM (Conv1D blocks → BiLSTM × 2). 5 Machine Learning: Random Forest (100 estimators), XGBoost, KNN, SVM, Logistic Regression. Final prediction is determined by majority vote across all 8 models.",
-          },
-          {
-            title: "🌡 Explainability",
-            content:
-              "Perturbation-based sensitivity heatmap: a 10-sample window is slid across the 187-point signal, each window is masked to zero, all 8 models are re-run, and the drop in ensemble confidence is recorded. High-drop regions are highlighted red — showing which ECG segments drove the prediction.",
-          },
-          {
-            title: "📷 Image Processing",
-            content:
-              "OpenCV pipeline: CLAHE contrast enhancement → adaptive Gaussian thresholding → morphological opening → per-column weighted centroid extraction. Signal is aligned to the MIT-BIH amplitude distribution (baseline ~0, QRS peak ~1) before prediction.",
-          },
-          {
-            title: "⚙️ Stack",
-            content:
-              "Frontend: React 18, SVG charts · Backend: FastAPI, Python 3.10 · ML/DL: TensorFlow 2.16 (CPU), Scikit-learn, XGBoost · Image: OpenCV · Containerization: Docker, Docker Compose, Nginx",
-          },
-        ].map(({ title, content }) => (
-          <div key={title} style={st.guideCard} className="card-hover">
-            <div style={st.guideTitle}>{title}</div>
-            <p style={st.guideContent}>{content}</p>
-          </div>
-        ))}
-        <div style={st.disclaimerCard} className="card-hover">
-          <div style={st.disclaimerTitle}>⚠️ Disclaimer</div>
-          <p style={st.guideContent}>
-            Research tool only. Not FDA-approved. Not a medical device. Always
-            consult a qualified cardiologist before clinical decisions.
-          </p>
-        </div>
-      </div>
+      )}
     </div>
   );
 
@@ -1297,53 +535,200 @@ export default function App() {
   if (authPage === "signup")
     return <SignupPage onSignup={handleLogin} onLogin={() => setAuthPage("login")} onLogoClick={() => setAuthPage("landing")} />;
 
+  const statusClass = serverOk === false || (serverOk && !modelsLive) ? "is-bad" : serverOk ? "is-live" : "";
+  const statusText =
+    serverOk === null ? "Connecting" : !serverOk ? "Offline" : modelsLive ? "Live" : "Models unavailable";
+
   return (
-    <div style={st.app} className="app">
+    <div className="ev-app">
       <Sidebar />
-      <main style={st.main}>
-        <div style={st.topBar} className="app-ecg-grid">
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={st.topTitle}>
-              {{ upload: "EchoVote", history: "History", guide: "Clinical Guide", about: "About" }[page]}
-            </div>
-            {page === "upload" && (
-              <span style={st.topBadge}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: serverOk ? "var(--green-bright)" : "var(--amber-light)", display: "inline-block" }} />
-                {serverOk ? (demoMode ? "Demo" : "Live") : "Offline"}
-              </span>
-            )}
+      <div className="ev-main">
+        <header className="ev-top">
+          <div className="ev-top-left">
+            <div className="ev-title">{PAGE_TITLES[page]}</div>
+            <span className={`ev-pill ${statusClass}`}>
+              <i />
+              {statusText}
+            </span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="ev-top-right">
             {results && page === "upload" && (
-              <button style={st.clearBtn} className="btn-primary" onClick={() => setResults(null)}>
-                + New Analysis
+              <button type="button" className="ev-btn ev-btn--primary" onClick={() => setResults(null)}>
+                <IconPlus size={16} /> New analysis
               </button>
             )}
+            <div className="ev-user">
+              <div className="ev-avatar">{initials}</div>
+              <div className="ev-user-meta">
+                <div className="ev-user-name">{user?.email || user?.name || "Guest"}</div>
+                {user?.org && <div className="ev-user-org">{user.org}</div>}
+              </div>
+              <button type="button" className="ev-icon-btn" onClick={handleLogout} title="Log out" aria-label="Log out">
+                <IconLogout size={17} />
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <div className="ev-content">
+          <div className="ev-content-inner">
+            {page === "upload" && !results && (
+              <>
+                <section className="ev-hero">
+                  <div className="ev-eyebrow">
+                    <IconPulse size={14} /> Arrhythmia screening
+                  </div>
+                  <h1>
+                    Screen an ECG for <span>arrhythmia</span>
+                  </h1>
+                  <p>
+                    Upload a heartbeat or a photo of an ECG strip, or paste raw values. You receive a
+                    clear screening result, the most likely beat type, and the parts of the
+                    waveform that drove the finding.
+                  </p>
+                </section>
+                <div className="ev-grid">
+                  <section className="ev-panel">
+                    <h2 className="ev-panel-title">Select ECG input</h2>
+                    <UploadPanel />
+                  </section>
+                  <aside className="ev-panel">
+                    <h2 className="ev-panel-title">How it works</h2>
+                    <ol className="ev-steps">
+                      <li>
+                        <span className="ev-step-n">01</span>
+                        <div>
+                          <b>Provide a beat</b>
+                          <span>A single 187-sample heartbeat as CSV, pasted values, or an ECG photo.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <span className="ev-step-n">02</span>
+                        <div>
+                          <b>Automated analysis</b>
+                          <span>Several independent algorithms assess each beat and their findings are combined.</span>
+                        </div>
+                      </li>
+                      <li>
+                        <span className="ev-step-n">03</span>
+                        <div>
+                          <b>Review and export</b>
+                          <span>Read the screen, inspect the sensitivity map, and download a report.</span>
+                        </div>
+                      </li>
+                    </ol>
+                    <div className="ev-notice">
+                      <IconShield size={18} />
+                      <div>
+                        Decision-support research tool. It is not a certified medical device and
+                        does not replace clinical judgement. A clinician must confirm every finding.
+                      </div>
+                    </div>
+                  </aside>
+                </div>
+
+                <section className="ev-section">
+                  <div className="ev-section-head">
+                    <h2>Beat types reported</h2>
+                    <span>AAMI EC57 classes</span>
+                  </div>
+                  <div className="ev-tiles">
+                    {[
+                      { code: "N", name: "Normal", text: "Resembles a normal heartbeat.", color: "#34d399" },
+                      { code: "S", name: "Supraventricular", text: "Early beat arising above the ventricles.", color: "#6b8cff" },
+                      { code: "V", name: "Ventricular", text: "Beat arising in the ventricles.", color: "#f87171" },
+                      { code: "F", name: "Fusion", text: "Blend of a normal and a ventricular beat.", color: "#fbbf24" },
+                      { code: "Q", name: "Unclassifiable", text: "Could not be classified; review manually.", color: "#a78bfa" },
+                    ].map(({ code, name, text, color }) => (
+                      <article className="ev-tile" key={code} style={{ "--c": color }}>
+                        <div className="ev-badge">{code}</div>
+                        <b>{name}</b>
+                        <span>{text}</span>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="ev-section ev-two">
+                  <div className="ev-panel">
+                    <div className="ev-section-head" style={{ margin: "0 0 14px" }}>
+                      <h2>Recent analyses</h2>
+                      {history.length > 0 && (
+                        <button type="button" className="ev-btn" onClick={() => setPage("history")}>
+                          View all <IconArrow size={15} />
+                        </button>
+                      )}
+                    </div>
+                    {history.length === 0 ? (
+                      <div className="ev-empty">
+                        <IconPulse size={26} />
+                        Your analyses from this session will appear here.
+                      </div>
+                    ) : (
+                      <ul className="ev-recent">
+                        {history.slice(0, 4).map((h) => {
+                          const { prediction } = getEnsemblePrediction(
+                            h.data.predictions,
+                            h.data.ensemble_probs,
+                            CLASS_LIST,
+                          );
+                          const color = COLOR_MAP[prediction] || "#a78bfa";
+                          const flagged = h.data.arrhythmia?.detected;
+                          return (
+                            <li key={h.id}>
+                              <button
+                                type="button"
+                                style={{ "--c": color }}
+                                onClick={() => {
+                                  setResults(h.data);
+                                  setPage("upload");
+                                }}
+                              >
+                                <div className="ev-badge" style={{ "--c": color }}>
+                                  {prediction?.match(/\((.)\)/)?.[1] || "?"}
+                                </div>
+                                <div className="ev-recent-main">
+                                  <b>{prediction}</b>
+                                  <span>{new Date(h.at).toLocaleTimeString()}</span>
+                                </div>
+                                {h.data.arrhythmia && (
+                                  <span className={`ev-flag ${flagged ? "is-warn" : "is-ok"}`}>
+                                    {flagged ? "Possible arrhythmia" : "No arrhythmia"}
+                                  </span>
+                                )}
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                  <aside className="ev-panel">
+                    <h2 className="ev-panel-title">For best results</h2>
+                    <ul className="ev-tips">
+                      {[
+                        "Use a single heartbeat of 187 samples for CSV or pasted input.",
+                        "For photos, use a straight, well-lit, in-focus image with a clearly visible trace.",
+                        "Photo results are less reliable than digital signals; check them against the original ECG.",
+                        "Always interpret the result alongside the full ECG and the clinical picture.",
+                      ].map((tip) => (
+                        <li key={tip}>
+                          <IconCheck size={16} />
+                          <span>{tip}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </aside>
+                </section>
+              </>
+            )}
+            {page === "upload" && results && <ResultsPanel data={results} />}
+            {page === "history" && HistoryPage()}
+            {page === "guide" && <GuidePage />}
+            {page === "about" && <AboutPage />}
           </div>
         </div>
-
-        <div style={st.content} className="app-content">
-          {page === "upload" && (
-            <div className={`analysis-workspace${results ? " has-results" : ""}`}>
-              <section className="analysis-input-card">
-                <div className="analysis-input-heading">
-                  <h2>Select ECG Input</h2>
-                  <p>Upload a file, take a photo, paste values, or use a sample ECG signal.</p>
-                </div>
-                <UploadPanel />
-              </section>
-              {results && (
-                <section className="analysis-results-section">
-                  <ResultsPanel data={results} demoMode={demoMode} />
-                </section>
-              )}
-            </div>
-          )}
-          {page === "history" && <HistoryPage />}
-          {page === "guide" && <GuidePage />}
-          {page === "about" && <AboutPage />}
-        </div>
-      </main>
+      </div>
     </div>
   );
 }

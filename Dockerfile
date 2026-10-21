@@ -16,7 +16,13 @@ RUN pip install --no-cache-dir --timeout=300 \
     uvicorn \
     python-multipart
 
+# Copy both backend files
 COPY backend/main.py .
+COPY backend/auth.py .
+
+# Persistent directory for users.db (mount this as a volume)
+RUN mkdir -p /app/data
+ENV ECHOVOTE_DB_PATH=/app/data/users.db
 
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

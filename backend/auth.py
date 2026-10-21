@@ -1,11 +1,9 @@
 """
-EchoVote — Authentication Router
-Stores users in a local SQLite database (users.db next to this file).
-Passwords are hashed with bcrypt.
+EchoVote authentication router.
 Endpoints:
   POST /auth/register       — create account
   POST /auth/login          — verify credentials
-  POST /auth/reset-password — set a new password (no email needed)
+  POST /auth/reset-password — change password after verifying the current password
 """
 
 import os
@@ -19,7 +17,10 @@ from pydantic import BaseModel
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ── Database path ─────────────────────────────────────────────────────────────
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
+DB_PATH = os.environ.get(
+    "ECHOVOTE_DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db"),
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ def _get_db():
 
 def _init_db():
     """Create the users table if it doesn't exist yet."""
+    os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
     conn = _get_db()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -82,6 +84,7 @@ class LoginRequest(BaseModel):
 
 class ResetPasswordRequest(BaseModel):
     identifier: str   # username or email
+    current_password: str
     new_password: str
 
 
@@ -161,7 +164,7 @@ def reset_password(req: ResetPasswordRequest):
     ident = req.identifier.strip().lower()
     conn = _get_db()
     row = conn.execute(
-        "SELECT id FROM users WHERE email = ? OR LOWER(username) = ?",
+        "SELECT id, pw_hash FROM users WHERE email = ? OR LOWER(username) = ?",
         (ident, ident),
     ).fetchone()
 
@@ -169,12 +172,16 @@ def reset_password(req: ResetPasswordRequest):
         conn.close()
         raise HTTPException(status_code=404, detail="No account found with that username or email.")
 
+    if not _verify_password(req.current_password, row["pw_hash"]):
+        conn.close()
+        raise HTTPException(status_code=401, detail="Incorrect current password.")
+
     new_hash = _hash_password(req.new_password)
     conn.execute("UPDATE users SET pw_hash = ? WHERE id = ?", (new_hash, row["id"]))
     conn.commit()
     conn.close()
 
-    return {"success": True, "message": "Password reset successfully. You can now log in."}
+    return {"success": True, "message": "Password changed successfully."}
 
 
 # Initialise DB on import

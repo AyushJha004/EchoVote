@@ -9,8 +9,10 @@ services:
       - "8001:8000"
     volumes:
       - ./models:/app/models
+      - user_data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
+      - ECHOVOTE_DB_PATH=/app/data/users.db
     init: true
     restart: unless-stopped
     healthcheck:
@@ -34,3 +36,4 @@ services:
 
 volumes:
   models:
+  user_data:

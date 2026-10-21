@@ -8,6 +8,7 @@ __pycache__/
 *.pyc
 *.pyo
 backend/backend.log
+backend/users.db
 backend/venv/
 
 # Node

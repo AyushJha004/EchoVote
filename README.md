@@ -3,6 +3,8 @@
 > AI-powered cardiac diagnosis using an 8-model ensemble (3 Deep Learning + 5 Machine Learning).  
 > Built for doctors and researchers. Capstone research — BMSCE Bengaluru.
 
+**How it works:** see [HOW_IT_WORKS.md](HOW_IT_WORKS.md) for how images are read, the model and screening logic, and how the sensitivity heatmap is computed. A screen-by-screen tour with screenshots is in [docs/WALKTHROUGH.md](docs/WALKTHROUGH.md).
+
 ---
 
 ## Quick Start (Docker)
@@ -13,12 +15,12 @@
    git clone https://github.com/AyushJha004/EchoVote.git
    cd EchoVote
    ```
-3. Put the trained model files in `models/` (or leave it empty to use Demo Mode).
+3. Put the trained model files in `models/` (all 8 models are required for full ensemble results; there is no demo mode).
 4. Build the images and start the app:
    ```powershell
    docker compose up -d --build
    ```
-5. Open **http://localhost:3001**. Check model status at **http://localhost:3001/api/health**; with trained models loaded, the response lists all 8 models and `"demo_mode":false`.
+5. Open **http://localhost:3001**. Check model status at **http://localhost:3001/api/health**; with trained models loaded, the response lists all 8 models with `"live":true`.
 
 ### After a system restart
 
@@ -34,6 +36,9 @@ The containers are configured to restart automatically when Docker starts. Model
 docker compose logs --tail 100 backend
 ```
 
+For a detailed Windows and VS Code terminal walkthrough, see
+[RUN_AFTER_RESTART.md](./RUN_AFTER_RESTART.md).
+
 ### Stop or update
 
 ```powershell
@@ -42,6 +47,7 @@ docker compose up -d --build
 ```
 
 `docker compose stop` preserves the containers for the next start. `docker compose down` removes them.
+The named `user_data` volume is retained by `docker compose down`; remove it only if you intend to permanently delete all registered accounts.
 
 ---
 
@@ -103,7 +109,11 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 ### Landing Page & Auth
 - Public landing page with live ECG animation, feature highlights, and stats strip
 - Login and Sign Up pages with a split-panel layout (ECG trace on the left, form on the right)
-- Auth is currently frontend-only (no backend session) — designed to be wired to a real auth provider
+- FastAPI authentication API for account registration and login by username or email
+- Passwords are stored as salted PBKDF2-HMAC-SHA256 hashes (260,000 iterations); plaintext passwords are not stored
+- SQLite user database is stored in Docker's persistent `user_data` volume at `/app/data/users.db`
+- Password changes require the current password; this is not a forgotten-password recovery flow
+- Login is UI-level only: authenticated state is held in the frontend and is not backed by server sessions or protected API routes
 
 ### Input Methods
 | Tab | Description |
@@ -121,10 +131,13 @@ The models are trained on the **MIT-BIH Arrhythmia Database** (187 samples per b
 | All Models | Individual cards for all 8 models with confidence and probability breakdown |
 
 ### Clinical Summary (bottom of results)
-- Final prediction with confidence
+- Predicted class selected by the highest averaged model class score
+- Model vote share and agreement tier shown separately from the selected class
 - ⚠️ DL vs ML disagreement alert when groups disagree
-- Consensus level: HIGH / MODERATE / LOW
-- Clinical recommendation based on prediction + consensus
+- Model Agreement Tier: HIGH / MODERATE / LOW, based on vote share
+- Neutral note to interpret the model output alongside the ECG and clinical context
+
+The averaged class scores are uncalibrated model outputs, not clinical probabilities or a diagnosis.
 
 ### Sensitivity Heatmap
 Perturbation-based explainability — slides a 10-sample window across the 187-point signal, masks each window, re-runs all 8 models, and shows which ECG segments most influenced the prediction.
@@ -136,11 +149,12 @@ Perturbation-based explainability — slides a 10-sample window across the 187-p
 ### PDF Export
 Click **⬇ Export PDF** in the results tab bar to download a clinical-style report. The PDF includes:
 - Colored header with report title and timestamp
-- Ensemble prediction, confidence, and agreement count
-- Stats row — models run, agreement %, consensus level, DL/ML split
-- Ensemble disease probability bars for all 5 classes
+- Predicted beat class selected by the highest averaged class score
+- Stats row — models run, vote agreement %, Model Agreement Tier, DL/ML split
+- Ensemble class-score bars for all 5 classes
 - Per-model results table with prediction, confidence, and all 5 class probabilities
-- Clinical summary with final prediction and recommendation
+- Methodology note distinguishing the averaged class scores from model vote agreement
+- Neutral interpretation note; scores are uncalibrated and require ECG and clinical context
 - Disclaimer footer
 
 File saves as `EchoVote_Report_YYYY-MM-DD.pdf`.
@@ -179,21 +193,33 @@ File saves as `EchoVote_Report_YYYY-MM-DD.pdf`.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/health` | Backend status + models loaded + demo mode flag |
+| GET | `/api/health` | Backend status + models loaded + `live` flag |
 | POST | `/api/predict/csv` | Upload CSV file (187 values) |
 | POST | `/api/predict/image` | Upload ECG photo — returns signal + original image as base64 |
 | POST | `/api/predict/manual` | JSON `{values: [...187 floats]}` |
 | POST | `/api/perturbation` | Sensitivity heatmap computation |
 | GET | `/api/clinical-info` | Clinical info for each arrhythmia class |
+| POST | `/auth/register` | Create an account |
+| POST | `/auth/login` | Authenticate by username or email |
+| POST | `/auth/reset-password` | Change password after verifying the current password |
+
+The frontend Nginx proxy forwards both `/api/*` and `/auth/*` requests to FastAPI.
+The backend reads the database path from `ECHOVOTE_DB_PATH`; Docker Compose sets it
+to `/app/data/users.db` and mounts the persistent `user_data` volume at `/app/data`.
+Rebuilding or recreating containers does not remove this named volume. Do not run
+`docker compose down -v` unless you intend to delete all registered users.
 
 ---
 
 ## 📝 Changelog
 
 ### Latest
+- Added backend-backed signup, login, and password changes using SQLite and salted PBKDF2 password hashes
+- Persisted account data in a Docker Compose volume and routed authentication requests through Nginx
+- Added a Windows/VS Code terminal guide for starting EchoVote after a laptop restart
 - Added **PDF Export** — clinical-style report with ensemble verdict, per-model table, disease probabilities, and recommendation
 - Added **Landing Page** — ECG animation, feature cards, stats strip, CTA
-- Added **Login & Sign Up pages** — split-panel auth UI, frontend-only (no backend session yet)
+- Added **Login & Sign Up pages** — split-panel auth UI
 - Fixed DL model loading: patched Keras `quantization_config` version mismatch so all 3 deep learning models load correctly
 - Fixed image preprocessing: signal now aligned to MIT-BIH amplitude distribution for accurate predictions
 - Renamed app from CardiaScan → **EchoVote**
