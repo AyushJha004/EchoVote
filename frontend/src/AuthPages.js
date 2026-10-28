@@ -58,9 +58,9 @@ function Banner({ type, message }) {
   return (
     <div
       style={{
-        padding: "10px 14px",
-        borderRadius: 8,
-        fontSize: 13,
+        padding: "12px 16px",
+        borderRadius: 10,
+        fontSize: 15,
         fontWeight: 500,
         background: isError ? "rgba(224,90,78,0.12)" : "rgba(15,157,138,0.12)",
         border: `1px solid ${isError ? "#e05a4e" : "#0f9d8a"}`,
@@ -83,7 +83,7 @@ function AuthShell({ title, subtitle, children, footer, onLogoClick }) {
         <Logo onClick={onLogoClick} />
         <div>
           <p style={s.asideMono}>Lead II · 25 mm/s</p>
-          <EcgLine style={{ height: 128, width: "100%", margin: "24px 0" }} />
+          <EcgLine style={{ height: 180, width: "100%", margin: "32px 0" }} />
           <blockquote style={s.asideQuote}>
             "Two models, one reading. Every beat accounted for."
           </blockquote>
@@ -113,7 +113,6 @@ export function LoginPage({ onLogin, onSignup, onLogoClick }) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [banner, setBanner] = useState(null); // { type, message }
-  const [showReset, setShowReset] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -138,16 +137,6 @@ export function LoginPage({ onLogin, onSignup, onLogoClick }) {
       setLoading(false);
     }
   };
-
-  if (showReset) {
-    return (
-      <ResetPasswordPage
-        onBack={() => setShowReset(false)}
-        onLogoClick={onLogoClick}
-        onLogin={() => setShowReset(false)}
-      />
-    );
-  }
 
   return (
     <AuthShell
@@ -187,20 +176,16 @@ export function LoginPage({ onLogin, onSignup, onLogoClick }) {
 
         <div style={s.rememberRow}>
           <label style={s.checkLabel}>
-            <input type="checkbox" style={{ accentColor: "var(--lp-primary)" }} /> Remember me
+            <input type="checkbox" style={{ accentColor: "var(--lp-primary)", width: 18, height: 18 }} /> Remember me
           </label>
-          <button
-            type="button"
-            style={s.forgotLink}
-            onClick={() => setShowReset(true)}
-          >
-            Change password
-          </button>
         </div>
 
         <button type="submit" style={s.submitBtn} className="lp-glow" disabled={loading}>
           {loading ? "Logging in…" : "Log in"}
         </button>
+        <p style={s.forgotNote}>
+          Forgot your password? Contact your administrator to have it reset.
+        </p>
       </form>
     </AuthShell>
   );
@@ -304,7 +289,7 @@ export function SignupPage({ onSignup, onLogin, onLogoClick }) {
         <label style={s.checkLabel}>
           <input
             type="checkbox"
-            style={{ accentColor: "var(--lp-primary)", marginTop: 2 }}
+            style={{ accentColor: "var(--lp-primary)", marginTop: 2, width: 18, height: 18, flexShrink: 0 }}
             required
           />
           I understand EchoVote is for decision support, not diagnosis.
@@ -312,128 +297,6 @@ export function SignupPage({ onSignup, onLogin, onLogoClick }) {
         <button type="submit" style={s.submitBtn} className="lp-glow" disabled={loading}>
           {loading ? "Creating account…" : "Create account"}
         </button>
-      </form>
-    </AuthShell>
-  );
-}
-
-// ── Reset Password Page ───────────────────────────────────────────────────────
-
-function ResetPasswordPage({ onBack, onLogoClick }) {
-  const [identifier, setIdentifier] = useState("");
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [banner, setBanner] = useState(null);
-  const [done, setDone] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setBanner(null);
-
-    if (newPassword.length < 6) {
-      setBanner({ type: "error", message: "Password must be at least 6 characters." });
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setBanner({ type: "error", message: "Passwords do not match." });
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const res = await fetch(`${API}/auth/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          identifier,
-          current_password: currentPassword,
-          new_password: newPassword,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setBanner({ type: "error", message: data.detail || "Password change failed." });
-      } else {
-        setDone(true);
-        setBanner({ type: "success", message: data.message || "Password reset successfully." });
-      }
-    } catch {
-      setBanner({ type: "error", message: "Could not reach the server. Is the backend running?" });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <AuthShell
-      title="Change password"
-      subtitle="Verify your current password, then choose a new one."
-      onLogoClick={onLogoClick}
-    >
-      <form style={s.form} onSubmit={handleSubmit}>
-        <Banner type={banner?.type} message={banner?.message} />
-
-        {!done ? (
-          <>
-            <Field
-              label="Username or Email"
-              type="text"
-              placeholder="you@hospital.org or dr_rao"
-              required
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-            />
-            <Field
-              label="Current Password"
-              type="password"
-              required
-              autoComplete="current-password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-            <Field
-              label="New Password"
-              type="password"
-              placeholder="At least 6 characters"
-              minLength={6}
-              required
-              autoComplete="new-password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-            <Field
-              label="Confirm New Password"
-              type="password"
-              placeholder="Repeat new password"
-              required
-              autoComplete="new-password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-            />
-            <button type="submit" style={s.submitBtn} className="lp-glow" disabled={loading}>
-              {loading ? "Changing…" : "Change Password"}
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            style={{ ...s.submitBtn, marginTop: 8 }}
-            className="lp-glow"
-            onClick={onBack}
-          >
-            ← Back to Login
-          </button>
-        )}
-
-        {!done && (
-          <p style={{ textAlign: "center", marginTop: 12 }}>
-            <button type="button" style={s.linkBtn} onClick={onBack}>
-              ← Back to Login
-            </button>
-          </p>
-        )}
       </form>
     </AuthShell>
   );
@@ -454,33 +317,33 @@ const s = {
     display: "flex",
     flexDirection: "column",
     justifyContent: "space-between",
-    padding: 40,
+    padding: 56,
     borderRight: "1px solid var(--lp-border)",
     overflow: "hidden",
   },
   asideMono: {
-    fontSize: 11,
+    fontSize: 14,
     fontFamily: "monospace",
     letterSpacing: "0.2em",
     textTransform: "uppercase",
     color: "var(--lp-accent)",
   },
   asideQuote: {
-    fontSize: 28,
+    fontSize: 38,
     fontWeight: 700,
     lineHeight: 1.3,
     letterSpacing: "-0.02em",
     color: "var(--lp-fg)",
     fontStyle: "normal",
   },
-  asideDisclaimer: { fontSize: 11, fontFamily: "monospace", color: "var(--lp-muted)" },
+  asideDisclaimer: { fontSize: 14, fontFamily: "monospace", color: "var(--lp-muted)" },
   formSection: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     padding: "48px 24px",
   },
-  formInner: { width: "100%", maxWidth: 380 },
+  formInner: { width: "100%", maxWidth: 520 },
   logoBtn: {
     display: "flex",
     alignItems: "center",
@@ -494,72 +357,64 @@ const s = {
   logoIcon: {
     display: "grid",
     placeItems: "center",
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
     borderRadius: 6,
     background: "var(--lp-primary)",
     color: "#fff",
   },
   logoText: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 700,
     letterSpacing: "-0.03em",
     color: "var(--lp-fg)",
   },
   formTitle: {
-    fontSize: 36,
+    fontSize: 46,
     fontWeight: 700,
     letterSpacing: "-0.04em",
     color: "var(--lp-fg)",
   },
-  formSub: { marginTop: 8, color: "var(--lp-muted)", fontSize: 15 },
-  form: { display: "flex", flexDirection: "column", gap: 14 },
-  fieldWrap: { display: "flex", flexDirection: "column", gap: 5 },
-  fieldLabel: { fontSize: 14, fontWeight: 500, color: "var(--lp-fg)" },
+  formSub: { marginTop: 10, color: "var(--lp-muted)", fontSize: 18 },
+  form: { display: "flex", flexDirection: "column", gap: 16 },
+  fieldWrap: { display: "flex", flexDirection: "column", gap: 7 },
+  fieldLabel: { fontSize: 16, fontWeight: 600, color: "var(--lp-fg)" },
   fieldInput: {
     width: "100%",
-    borderRadius: 6,
+    borderRadius: 10,
     border: "1px solid var(--lp-border)",
     background: "var(--lp-card)",
-    padding: "10px 12px",
-    fontSize: 14,
+    padding: "14px 16px",
+    fontSize: 17,
     color: "var(--lp-fg)",
     outline: "none",
     boxSizing: "border-box",
     transition: "border-color 0.2s, box-shadow 0.2s",
   },
-  fieldError: { fontSize: 12, color: "#e05a4e", marginTop: 2 },
+  fieldError: { fontSize: 14, color: "#e05a4e", marginTop: 2 },
   rememberRow: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    fontSize: 14,
+    fontSize: 16,
   },
   checkLabel: {
     display: "flex",
     alignItems: "flex-start",
-    gap: 8,
-    fontSize: 14,
+    gap: 10,
+    fontSize: 16,
     color: "var(--lp-muted)",
     cursor: "pointer",
   },
-  forgotLink: {
-    background: "none",
-    border: "none",
-    color: "var(--lp-primary)",
-    textDecoration: "none",
-    fontSize: 14,
-    cursor: "pointer",
-    padding: 0,
-  },
+  forgotNote: { margin: 0, textAlign: "center", fontSize: 15, color: "var(--lp-muted)" },
   submitBtn: {
     width: "100%",
     background: "var(--lp-primary)",
     color: "#fff",
     border: "none",
-    borderRadius: 6,
-    padding: "11px",
-    fontSize: 15,
+    borderRadius: 10,
+    padding: "15px",
+    fontSize: 18,
     fontWeight: 600,
     cursor: "pointer",
     marginTop: 4,
@@ -569,7 +424,7 @@ const s = {
   formFooter: {
     marginTop: 24,
     textAlign: "center",
-    fontSize: 14,
+    fontSize: 16,
     color: "var(--lp-muted)",
   },
   linkBtn: {
@@ -578,7 +433,7 @@ const s = {
     color: "var(--lp-primary)",
     fontWeight: 600,
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: 16,
     padding: 0,
   },
 };

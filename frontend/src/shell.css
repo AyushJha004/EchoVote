@@ -734,3 +734,7 @@
 .ev-app .results-model-preview {
   grid-column: 1 / -1;
 }
+.ev-icon-btn--key:hover {
+  color: var(--ev-accent);
+  background: rgba(34, 211, 238, 0.12);
+}
