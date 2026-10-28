@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "🫀 Starting CardioAI Backend..."
+echo "🫀 Starting EchoVote Backend..."
 cd "$(dirname "$0")/backend"
 if [ ! -d "venv" ]; then
   echo "Creating virtual environment..."
