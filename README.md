@@ -49,6 +49,19 @@ docker compose up -d --build
 `docker compose stop` preserves the containers for the next start. `docker compose down` removes them.
 The named `user_data` volume is retained by `docker compose down`; remove it only if you intend to permanently delete all registered accounts.
 
+### Forgotten password (administrator)
+
+There is no email reset. An administrator resets a password from the terminal:
+
+```powershell
+docker compose exec backend python admin_reset_password.py --list
+docker compose exec backend python admin_reset_password.py user@example.org --generate
+```
+
+`--generate` sets a random password and prints it; without it the script prompts for one. Give the new password to the
+user privately and ask them to change it under **Account > Change password**. Run `docker compose up -d --build` once
+after pulling this version so the script is inside the image.
+
 ---
 
 ## 🛠 Development (Without Docker)

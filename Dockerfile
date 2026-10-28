@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir --timeout=300 \
 # Copy both backend files
 COPY backend/main.py .
 COPY backend/auth.py .
+COPY backend/admin_reset_password.py .
 
 # Persistent directory for users.db (mount this as a volume)
 RUN mkdir -p /app/data

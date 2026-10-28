@@ -85,7 +85,7 @@ function AuthShell({ title, subtitle, children, footer, onLogoClick }) {
           <p style={s.asideMono}>Lead II · 25 mm/s</p>
           <EcgLine style={{ height: 180, width: "100%", margin: "32px 0" }} />
           <blockquote style={s.asideQuote}>
-            "Two models, one reading. Every beat accounted for."
+            "Eight models, one reading. Every beat accounted for."
           </blockquote>
         </div>
         <p style={s.asideDisclaimer}>For research &amp; clinical decision support only.</p>
