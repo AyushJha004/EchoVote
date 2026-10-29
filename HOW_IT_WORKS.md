@@ -102,8 +102,9 @@ has too little contrast (5th to 95th percentile spread below 30).
 * The signal is flipped so peaks point up, shifted so the 20th percentile is 0, and scaled so the maximum is 1.
 
 **Step D: cut into beats** (`segment_beats`).
-1. Find R peaks with `scipy.signal.find_peaks`: height at least 0.4, prominence at least 0.3, minimum spacing of
-   1/80 of the strip width.
+1. Find R peaks (`detect_r_peaks`) with `scipy.signal.find_peaks`: height at least 0.3, prominence at least 0.3,
+   minimum spacing of 1/40 of the strip width, then drop peaks lower than 0.6 times the typical R height (these are
+   T and P waves).
 2. Fewer than two peaks means the strip cannot be segmented. The whole image is then resampled to 187 samples
    and treated as one beat (the old behaviour).
 3. The training beats run from one R peak to the next. So each beat is the stretch between consecutive R peaks.
@@ -321,6 +322,36 @@ stitched from them are not realistic, and no labelled real ECG photographs were 
 | Atrial rhythms (flutter, regular) | Regular flutter waves | Not flagged, called Normal (7 of 7 R peaks found); flutter is outside what a beat-shape model can see |
 
 Three images are an illustration, not a validation. Photo classification accuracy remains unmeasured.
+
+### Real annotated strips (29 Oct 2026)
+
+The synthetic checks above cannot say how the photo path performs on real ECG morphology, so it was tested on real
+cardiologist-annotated MIT-BIH recordings (44 records, 6 random 10 s strips each, 264 strips, 3 image variants
+each). Strips were rendered as images at standard paper scale (25 mm/s, 10 mm/mV), degraded (clean, noisy JPEG,
+2.5 degree tilt on a blue grid) and run through the app's own deskew, trace extraction, segmentation and
+8-model ensemble. Records were split in half by record: rules were chosen on 22 "dev" records and confirmed on 22
+held-out "test" records. These are rendered images of real signals, not photographs.
+
+| On held-out test records | Before | After (now) |
+|---|---|---|
+| R-peak precision | 77% | 85% |
+| R-peak recall | 94% | 92% |
+| Beat accuracy, 5 classes | 55-57% | 63-65% |
+
+* The better peak detector (`detect_r_peaks`) is the change that was adopted; it held up on the held-out records.
+* For comparison, cutting beats directly from the raw signal (no image) gives 95% beat accuracy, so most of the gap
+  is lost in the image path.
+* **Time scale matters most.** A photo has no time axis, so each strip's median beat interval is mapped to 106
+  samples. Using the true time scale instead raised beat accuracy to 76-83%. Estimating the scale from the paper
+  grid worked on clean synthetic grids but not reliably on resized or tilted ones, so it was not adopted.
+* Not helpful: keeping the part of the trace below the baseline (beat accuracy fell to 46%, the models expect the
+  clipped form).
+* **The strip screen over-flags real strips.** With the current rule (flag at 20% of beats or one beat at 0.7) 10 s
+  strips are flagged almost always: 96% sensitivity but only about 10% specificity on held-out records. Any other
+  rule trades sensitivity for specificity (for example 80% sensitivity / 50% specificity, or 89% / 20%); none reaches both. This is because
+  the models call about 70% of normal beats cut from images abnormal. The rule was therefore left unchanged.
+* Records with bundle branch block count as Normal in the AAMI labels but look abnormal to the models, which
+  lowers specificity for any pipeline, including the digital one (78-84% beat specificity).
 
 Caveats you should keep in mind:
 * The MIT-BIH test beats come from the same patients as the training beats, so performance on new patients will be
