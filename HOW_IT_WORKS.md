@@ -175,6 +175,15 @@ The models label **beat shapes**. They cannot recognise rhythm disorders such as
 fibrillation as such; at best an irregular strip is flagged as abnormal and its beats are labelled with the closest
 known class. Detecting those would need a model trained on rhythm-labelled data.
 
+**Myocardial infarction (MI) is not detected.** The capstone also trained the same 8 model families on the PTB
+Diagnostic ECG Database as a separate binary Normal-versus-MI task (accuracy 78% to 99.6%, CNN-LSTM best), but those
+models are not part of this app: `models/` holds only the MIT-BIH 5-class set, and there is no MI output. Checked
+on 80 normal and 80 MI beats from the PTB files (`ptbdb_normal.csv`, `ptbdb_abnormal.csv`): the app flagged 9% of
+normal PTB beats and only 30% of MI beats, and called 75 of 80 MI beats Normal. A result of "Normal" or "No
+arrhythmia" therefore says nothing about MI. Adding MI would mean exporting the PTB models, adding an MI result to
+the API and UI, and validating it separately (PTB is single-lead beats from 290 patients, with several beats per
+patient, so a patient-wise split is essential).
+
 ---
 
 ## 6. The sensitivity heatmap (perturbation / occlusion map)
@@ -350,6 +359,12 @@ held-out "test" records. These are rendered images of real signals, not photogra
   strips are flagged almost always: 96% sensitivity but only about 10% specificity on held-out records. Any other
   rule trades sensitivity for specificity (for example 80% sensitivity / 50% specificity, or 89% / 20%); none reaches both. This is because
   the models call about 70% of normal beats cut from images abnormal. The rule was therefore left unchanged.
+* **Limits of this test.** The images are rendered from real signals, not photographed, so perspective, shadows,
+  creases, uneven light and different grid styles were not tested. The models were trained on MIT-BIH, so these
+  strips come from patients they have seen, which flatters the absolute numbers; the before/after comparisons are the
+  trustworthy part. The held-out half is 22 records and about 130 strips, enough to trust the detector gain but
+  only a rough guide to the rule trade-offs. The strongest next step is a set of 30-50 real, diagnosis-labelled ECG
+  photographs run through `validation/real_*.py`-style checks.
 * Records with bundle branch block count as Normal in the AAMI labels but look abnormal to the models, which
   lowers specificity for any pipeline, including the digital one (78-84% beat specificity).
 
