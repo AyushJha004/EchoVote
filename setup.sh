@@ -2,7 +2,7 @@
 set -e
 
 echo ""
-echo "🫀  CardioAI — ECG Arrhythmia Classifier"
+echo "🫀  EchoVote — ECG Arrhythmia Classifier"
 echo "=========================================="
 echo ""
 

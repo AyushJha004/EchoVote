@@ -175,3 +175,10 @@ export function LogoMark({ size = 28 }) {
     </svg>
   );
 }
+export const IconKey = make(
+  <>
+    <circle cx="8" cy="15" r="4" />
+    <path d="M10.8 12.2L20 3" />
+    <path d="M16 7l3 3" />
+  </>,
+);

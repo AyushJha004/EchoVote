@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "🌐 Starting CardioAI Frontend..."
+echo "🌐 Starting EchoVote Frontend..."
 cd "$(dirname "$0")/frontend"
 if [ ! -d "node_modules" ]; then
   echo "Installing npm packages..."

@@ -8,8 +8,9 @@ import LandingPage from "./LandingPage";
 import { LoginPage, SignupPage } from "./AuthPages";
 import { getEnsemblePrediction } from "./ensemble";
 import { GuidePage, AboutPage } from "./InfoPages";
+import AccountPage from "./AccountPage";
 import {
-  IconPulse, IconHistory, IconBook, IconInfo, IconLogout, IconUpload, IconFile,
+  IconPulse, IconKey, IconHistory, IconBook, IconInfo, IconLogout, IconUpload, IconFile,
   IconCamera, IconPaste, IconFlask, IconPlus, IconShield, IconCheck, IconArrow, LogoMark,
 } from "./icons";
 
@@ -27,6 +28,7 @@ const PAGE_TITLES = {
   history: "History",
   guide: "Clinical Guide",
   about: "About",
+  account: "Account",
 };
 
 const SAMPLES = [
@@ -563,6 +565,9 @@ export default function App() {
                 <div className="ev-user-name">{user?.email || user?.name || "Guest"}</div>
                 {user?.org && <div className="ev-user-org">{user.org}</div>}
               </div>
+              <button type="button" className="ev-icon-btn ev-icon-btn--key" onClick={() => setPage("account")} title="Change password" aria-label="Change password">
+                <IconKey size={17} />
+              </button>
               <button type="button" className="ev-icon-btn" onClick={handleLogout} title="Log out" aria-label="Log out">
                 <IconLogout size={17} />
               </button>
@@ -726,6 +731,7 @@ export default function App() {
             {page === "history" && HistoryPage()}
             {page === "guide" && <GuidePage />}
             {page === "about" && <AboutPage />}
+            {page === "account" && <AccountPage user={user} />}
           </div>
         </div>
       </div>

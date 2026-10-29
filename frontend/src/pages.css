@@ -460,3 +460,25 @@ button.ev-hist-row:hover { background: var(--bg-hover); }
 }
 .ev-hist-select { color-scheme: dark; }
 .ev-hist-select option { background: var(--bg-card); color: var(--text-primary); }
+
+/* Account / change password */
+.ev-account-form { display: flex; flex-direction: column; gap: 18px; padding: 28px; }
+.ev-account-form label { display: flex; flex-direction: column; gap: 6px; }
+.ev-account-form label span { font-size: 16px; font-weight: 600; color: var(--text-secondary); }
+.ev-account-form input {
+  height: 52px; padding: 0 16px; border-radius: 12px; font: inherit; font-size: 17px;
+  color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border);
+}
+.ev-account-form input:focus { outline: none; border-color: var(--border-focus); }
+.ev-account-form .ev-btn { align-self: flex-start; height: 48px; padding: 0 28px; font-size: 16px; margin-top: 4px; }
+.ev-account-banner { padding: 12px 14px; border-radius: 12px; font-size: 15px; }
+.ev-account-banner.is-error { color: #f87171; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.4); }
+.ev-account-banner.is-success { color: #34d399; background: rgba(52,211,153,0.1); border: 1px solid rgba(52,211,153,0.4); }
+
+.ev-account-side { padding: 28px; }
+.ev-account-details { margin: 14px 0 0; display: flex; flex-direction: column; gap: 14px; }
+.ev-account-details div { display: flex; flex-direction: column; gap: 2px; }
+.ev-account-details dt { font-size: 13px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.ev-account-details dd { margin: 0; font-size: 17px; color: var(--text-primary); word-break: break-all; }
+.ev-account-tips { margin: 14px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 15px; line-height: 1.5; color: var(--text-secondary); }
+.ev-account-tips li::marker { color: var(--ev-accent); }

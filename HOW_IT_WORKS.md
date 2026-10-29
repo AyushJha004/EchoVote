@@ -75,10 +75,14 @@ made them far less accurate on real beats; see the validation notes in section 9
 A photo of a strip contains many beats, a coloured grid and sometimes frames or labels. The pipeline recovers the
 waveform, cuts it into single beats in the training format, and analyses every beat.
 
-**Step A: validate.** Reject the image if it cannot be decoded, is blank (grey-level standard deviation below 8) or
+**Step A: validate.** Reject the image if it cannot be decoded, is smaller than 480 x 120 px (the trace cannot be
+recovered reliably below that), is blank (grey-level standard deviation below 8) or
 has too little contrast (5th to 95th percentile spread below 30).
 
-**Step B: find the trace pixels** (`extract_trace` in `main.py`).
+**Step B: level the image, then find the trace pixels** (`deskew` and `extract_trace` in `main.py`).
+0. **Deskew.** The tilt is estimated by trying angles from -8 to +8 degrees and keeping the one that lines up the
+   grid's horizontal lines best (row sums of the vertical-gradient image). It is applied only when the tilt is at
+   least 0.6 degrees and clearly better than no rotation; straight images are left untouched.
 1. Crop 4% off the top and bottom and 1% off each side to drop borders and labels.
 2. Downscale (never upscale) to at most 2000 x 600 px, then apply a 3x3 Gaussian blur.
 3. **Two-level Otsu threshold.** The first Otsu threshold separates "ink" (trace, dark grid lines) from paper.
@@ -112,7 +116,8 @@ A photo has no time scale, so the "106 samples per median interval" mapping assu
 an approximation.
 
 **Step E: analyse every beat, then combine** (section 5). The response also carries the extracted trace, the R-peak
-positions, and a rhythm-regularity number (section 6).
+positions, and a rhythm-regularity number (section 6). A strip with fewer than 4 analysable beats is marked
+`low_beat_count` and the UI shows a low-reliability note.
 
 **Speed.** Every beat in the strip is run through all 8 models (the KNN model is the slowest, roughly 6 s per beat
 on CPU), so a strip with about 15 beats can take 1 to 2 minutes. The Nginx proxy allows up to 900 s.
@@ -298,7 +303,12 @@ JPEG, 2.5 degree rotation, very low resolution), run through `extract_trace`, an
 | Rotated 2.5 degrees | 0.81 | 95% | 0.08 |
 | Very low resolution (about 375 x 90 px) | 0.69 | 65% | 0.73 |
 
-So extraction is reliable on clean and moderately noisy images and degrades on rotated or tiny ones.
+So extraction is reliable on clean and moderately noisy images and degrades on rotated or tiny ones. Deskew and the
+minimum-size check were added in response (below).
+
+**After deskew** (8 strips per tilt; trace correlation before to after): 2.5 degrees 0.77 to 0.92, 4 degrees 0.47 to 0.96,
+6 degrees 0.23 to 0.59 (only partly recovered). Straight images and the three real strips were not rotated.
+A 1 degree tilt is corrected only partly and was not clearly improved.
 This does **not** validate classification from photos: MIT-BIH beats are scaled one by one, so strips
 stitched from them are not realistic, and no labelled real ECG photographs were available.
 

@@ -1007,6 +1007,12 @@ export default function ResultsPanel({ data }) {
                     the full ECG.
                   </div>
                 )}
+                {source_image && arrhythmia.low_beat_count && (
+                  <div style={{ ...s.verdictMeta, marginTop: 6 }}>
+                    Only {arrhythmia.beats_total} beat{arrhythmia.beats_total === 1 ? "" : "s"} could be
+                    analysed in this strip, so this result is low reliability. Use a longer strip if you can.
+                  </div>
+                )}
                 {source_image && (
                   <div style={{ ...s.verdictMeta, marginTop: 6 }}>
                     Extracted from a photo, which is less reliable than a digital signal. Check
